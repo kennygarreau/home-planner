@@ -131,31 +131,61 @@ The Tools page contains a set of calculators for home improvement planning. Each
 
 Sizes a residential electrical service panel using the **NEC Article 220 Optional Method (Section 220.82)**. This is the same method a licensed electrician uses to determine whether an existing panel can support new loads (EV charger, heat pump, additional circuits, etc.) or whether a service upgrade is required.
 
+#### NEC Required Loads
+
+NEC 220.82 mandates three base loads that must be included regardless of actual usage. The calculator handles these separately from the appliance table:
+
+| Load | Rule | Calculation |
+|------|------|-------------|
+| General lighting & receptacles | 220.82(B)(1) | 3 VA × total conditioned sq ft |
+| Kitchen small appliance circuits | 220.52(A) | 1,500 VA × number of 20A circuits (min. 2) |
+| Laundry branch circuit | 220.52(B) | 1,500 VA fixed |
+
+Enter your home's total conditioned square footage (outside dimensions, excluding garages and unfinished spaces) and the calculator computes the general load automatically. **Do not add individual lighting or receptacle circuits to the appliance table** — they are already covered by the sq ft calculation.
+
+The laundry circuit (1,500 VA) covers the washer outlet. The dryer is a separate named appliance in the table.
+
+#### Appliance & Motor Loads
+
+Add fastened-in-place appliances and motor loads individually: HVAC, water heater, dryer, EV charger, etc.
+
+**Enter the equipment's actual maximum draw — not the breaker size.** A 32 A EV charger on a 40A circuit should be entered as 32 A. The 40 A recommendation already includes the NEC 125% continuous-load safety factor; using it as the input overstates the demand by 25% and pushes the breaker recommendation one size too high.
+
+#### HVAC — larger of heating or cooling (NEC 220.82(C))
+
+Include **only the larger** of your heating load or cooling load, not both. If your AC compressor draws more than your electric heat strips, enter the AC and omit the heat strips; if heat strips are larger, do the reverse.
+
+The **furnace fan / air handler blower** is not subject to this rule — it runs year-round and belongs in the appliance table separately at its motor amps regardless of which HVAC mode you select.
+
+#### Sub-Panels
+
+Sub-panels are calculated independently using the same NEC 220.82 demand factors, then contribute their **demand VA** (not their connected VA) to the main panel total. The feeder breaker from the main panel to a sub-panel is sized at the sub-panel's rated capacity, not its demand.
+
 #### How the numbers are calculated
 
 **Step 1 — VA per load**
 
-Every load is expressed in volt-amperes (VA), not just amps:
+Every load is expressed in volt-amperes (VA):
 
 ```
 VA = circuit amps × circuit voltage × quantity
 ```
 
-Circuit voltage matters. A 30 A HVAC circuit at 240 V contributes 7,200 VA. A 15 A lighting circuit at 120 V contributes only 1,800 VA. The original (naive) approach of summing amps without considering voltage produces meaningless results when your loads are a mix of 120 V and 240 V circuits, which they always are in a residential panel.
+Circuit voltage matters. A 30 A HVAC circuit at 240 V contributes 7,200 VA. A 15 A circuit at 120 V contributes only 1,800 VA. Summing raw amps across a mixed 120 V / 240 V panel produces meaningless results.
 
 **Step 2 — Connected Load**
 
-Sum of all VA across every row. Divide by 240 to get the equivalent service amps:
+Sum of all VA (required loads + appliances + sub-panel demand contributions). Divide by 240 to get equivalent service amps:
 
 ```
 connected amps = total VA ÷ 240
 ```
 
-All residential services in North America are 120/240 V split-phase. Panel capacity is always expressed at 240 V — this is why VA is always divided by 240 regardless of whether individual circuits are 120 V or 240 V.
+All North American residential services are 120/240 V split-phase. Panel capacity is always expressed at 240 V.
 
 **Step 3 — NEC Demand Load (NEC 220.82)**
 
-The NEC recognises that not every load in a house runs simultaneously. Demand factors are applied to the connected VA total:
+Demand factors are applied to the connected VA total:
 
 ```
 first 10,000 VA  →  100%
@@ -165,7 +195,7 @@ demand VA  = 10,000 + (total VA − 10,000) × 0.40   (when total VA > 10,000)
 demand A   = demand VA ÷ 240
 ```
 
-This is why a panel that looks "full" on a raw amp-sum basis often has substantial real headroom. Example: a home with 50,000 VA connected has a demand load of only 26,000 VA = **108 A** on a 200 A panel — room for a 48 A EV charger circuit.
+This is why a panel that looks "full" on a raw amp-sum basis often has substantial real headroom. Example: a home with 50,000 VA connected has a demand load of only 26,000 VA = **108 A** on a 200 A panel.
 
 **Step 4 — Load %**
 
@@ -173,7 +203,7 @@ This is why a panel that looks "full" on a raw amp-sum basis often has substanti
 load % = demand amps ÷ panel amps × 100
 ```
 
-NEC recommends keeping continuous service demand below 80% of panel rating for sustained loads. Above 80% the tool warns; above 100% it flags an overload.
+Above 80% the tool warns; above 100% it flags an overload.
 
 ---
 
@@ -181,7 +211,7 @@ NEC recommends keeping continuous service demand below 80% of panel rating for s
 
 Marking a load as **continuous** (expected to run for 3 or more hours uninterrupted) does **not** affect the service demand calculation. The NEC 220.82 Optional Method does not apply a continuous-load multiplier to the demand total.
 
-What it *does* affect is **minimum breaker size**. Per NEC 210.20(A), the overcurrent protective device (breaker) for a continuous load must be rated at no less than **125% of the load**:
+What it *does* affect is **minimum breaker size**. Per NEC 210.20(A), the breaker for a continuous load must be rated at no less than **125% of the load**:
 
 ```
 minimum breaker amps = circuit amps × 1.25, rounded up to next standard size
@@ -189,27 +219,23 @@ minimum breaker amps = circuit amps × 1.25, rounded up to next standard size
 
 Standard sizes: 15, 20, 25, 30, 35, 40, 50, 60, 70, 80, 90, 100 A …
 
-Example: a 30 A continuous HVAC circuit requires a minimum **40 A breaker** (30 × 1.25 = 37.5 → next standard = 40). When you check Cont. for a load, a "Minimum breaker sizes" table appears below the results showing the required breaker for each continuous circuit. The demand total and headroom numbers do not change — this is correct behaviour.
+Example: a 32 A continuous EV charger requires a minimum **40 A breaker** (32 × 1.25 = 40). The demand total and headroom numbers are unaffected.
 
-#### Typical load voltages for reference
+#### Typical appliance loads for reference
 
 | Load | Typical amps | Voltage | VA |
 |------|-------------|---------|-----|
-| HVAC / heat pump | 20–60 A | 240 V | 4,800–14,400 |
+| HVAC / heat pump compressor | 20–60 A | 240 V | 4,800–14,400 |
+| Furnace blower / air handler | 5–10 A | 120 V | 600–1,200 |
 | Electric range | 50 A | 240 V | 12,000 |
 | Electric dryer | 30 A | 240 V | 7,200 |
 | Water heater | 25–30 A | 240 V | 6,000–7,200 |
-| EV charger (Level 2) | 32–48 A | 240 V | 7,680–11,520 |
-| Dishwasher | 15 A | 120 V | 1,800 |
-| Washer | 20 A | 120 V | 2,400 |
+| EV charger (Level 2) | 24–48 A | 240 V | 5,760–11,520 |
+| Dishwasher | 12–15 A | 120 V | 1,440–1,800 |
 | Refrigerator | 6 A | 120 V | 720 |
 | Microwave | 15 A | 120 V | 1,800 |
-| Lighting circuit | 15 A | 120 V | 1,800 |
-| Kitchen small appliance | 20 A | 120 V | 2,400 |
 
-#### Known simplification
-
-NEC 220.82 technically adds the HVAC load at 100% *on top of* the demand-factor-adjusted general load, rather than folding HVAC into the same demand pool as everything else. For a planning estimate this difference is minor, but on a heavily electrified home with large HVAC the calculator may slightly understate demand. The results panel notes this. An official load calculation by a licensed electrician is required before any service change or panel upgrade.
+An official load calculation by a licensed electrician is required before any service change or panel upgrade.
 
 ---
 
