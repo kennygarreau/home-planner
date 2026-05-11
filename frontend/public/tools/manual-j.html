@@ -1,0 +1,888 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Manual J · Multi-Zone Load Calculator</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0f1117;--surface:#181c26;--surface2:#1e2333;--surface3:#242a3a;
+  --border:#2a3045;--accent:#e8a020;--accent2:#4fc3a1;--accent3:#e05252;--accent4:#7c9ef5;
+  --text:#e8eaf0;--text-muted:#7a8099;--text-dim:#4a5068;
+  --radius:10px;
+  --fd:'DM Serif Display',Georgia,serif;
+  --fb:'DM Sans',sans-serif;
+  --fm:'DM Mono',monospace;
+  --header-h:56px;
+  --bottom-nav-h:64px;
+  --safe-bottom:env(safe-area-inset-bottom,0px);
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;overflow:hidden}
+body{background:var(--bg);color:var(--text);font-family:var(--fb);font-size:15px;line-height:1.6;display:flex;flex-direction:column}
+
+/* ── Header ── */
+header{
+  height:var(--header-h);min-height:var(--header-h);
+  border-bottom:1px solid var(--border);
+  padding:0 20px;
+  display:flex;align-items:center;gap:12px;
+  background:rgba(15,17,23,0.97);
+  backdrop-filter:blur(12px);
+  z-index:300;flex-shrink:0;
+}
+header h1{font-family:var(--fd);font-size:1.25rem;letter-spacing:-0.02em;white-space:nowrap}
+header h1 span{color:var(--accent)}
+.badge{font-family:var(--fm);font-size:0.55rem;background:var(--accent);color:#0f1117;padding:2px 7px;border-radius:4px;font-weight:500;letter-spacing:0.06em;text-transform:uppercase;flex-shrink:0;white-space:nowrap}
+.mode-bar{display:flex;margin-left:auto;background:var(--surface2);border:1px solid var(--border);border-radius:7px;padding:2px;flex-shrink:0}
+.mode-tab{font-family:var(--fm);font-size:0.62rem;padding:5px 11px;border-radius:5px;cursor:pointer;color:var(--text-muted);border:none;background:transparent;transition:all 0.15s;white-space:nowrap}
+.mode-tab.active{background:var(--accent);color:#0f1117;font-weight:600}
+
+/* ── App shell (desktop 3-col, tablet 1-col) ── */
+.app-shell{flex:1;display:grid;grid-template-columns:220px 1fr 280px;grid-template-rows:1fr;overflow:hidden}
+
+/* ── Desktop sidebar ── */
+.sidenav{border-right:1px solid var(--border);overflow-y:auto;padding:18px 0;display:flex;flex-direction:column}
+.nav-label{font-family:var(--fm);font-size:0.56rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--text-dim);padding:0 16px 7px}
+.nav-link{display:flex;align-items:center;gap:8px;padding:8px 16px;color:var(--text-muted);font-size:0.78rem;transition:all 0.15s;border-left:2px solid transparent;cursor:pointer;user-select:none}
+.nav-link:hover{color:var(--text);background:var(--surface)}
+.nav-link.active{color:var(--accent);border-left-color:var(--accent);background:rgba(232,160,32,0.06)}
+.nav-link .nn{font-family:var(--fm);font-size:0.6rem;color:var(--text-dim);min-width:14px}
+.nav-link.active .nn{color:var(--accent)}
+
+/* ── Main scroll area ── */
+.main-scroll{overflow-y:auto;-webkit-overflow-scrolling:touch;padding:28px 36px;position:relative}
+.page{display:none}.page.active{display:block;animation:fadeUp 0.2s ease both}
+@keyframes fadeUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+
+/* ── Desktop results panel ── */
+.rpanel{border-left:1px solid var(--border);overflow-y:auto;padding:18px 16px;background:var(--surface)}
+.rpanel-label{font-family:var(--fm);font-size:0.56rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-dim);margin-bottom:12px}
+
+/* ── Mobile bottom nav ── */
+.mobile-nav{
+  display:none;
+  position:fixed;bottom:0;left:0;right:0;
+  height:calc(var(--bottom-nav-h) + var(--safe-bottom));
+  padding-bottom:var(--safe-bottom);
+  background:rgba(15,17,23,0.97);
+  backdrop-filter:blur(16px);
+  border-top:1px solid var(--border);
+  z-index:400;
+  flex-direction:row;
+  align-items:stretch;
+}
+.mobile-nav-item{
+  flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:3px;cursor:pointer;color:var(--text-dim);transition:all 0.15s;
+  padding:8px 4px 4px;border:none;background:transparent;
+}
+.mobile-nav-item.active{color:var(--accent)}
+.mobile-nav-item svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.mobile-nav-item span{font-family:var(--fm);font-size:0.52rem;letter-spacing:0.04em;text-transform:uppercase}
+
+/* ── Mobile live estimate drawer ── */
+.drawer-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:450;backdrop-filter:blur(2px)}
+.drawer{
+  display:none;
+  position:fixed;bottom:0;left:0;right:0;
+  background:var(--surface);
+  border-top:1px solid var(--border);
+  border-radius:16px 16px 0 0;
+  z-index:500;
+  max-height:80vh;
+  overflow-y:auto;
+  -webkit-overflow-scrolling:touch;
+  transform:translateY(100%);
+  transition:transform 0.3s cubic-bezier(0.32,0.72,0,1);
+  padding-bottom:var(--safe-bottom);
+}
+.drawer.open{transform:translateY(0)}
+.drawer-handle{
+  width:36px;height:4px;border-radius:2px;
+  background:var(--border);margin:12px auto 4px;
+}
+.drawer-header{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:8px 18px 14px;border-bottom:1px solid var(--border);
+}
+.drawer-header h3{font-family:var(--fd);font-size:1rem}
+.drawer-close{background:var(--surface2);border:1px solid var(--border);color:var(--text-muted);border-radius:6px;padding:4px 10px;font-size:0.75rem;cursor:pointer;font-family:var(--fb)}
+.drawer-body{padding:14px 16px}
+
+/* ── Mobile step progress ── */
+.mobile-step-bar{
+  display:none;
+  position:sticky;top:0;z-index:100;
+  background:var(--surface);
+  border-bottom:1px solid var(--border);
+  padding:10px 16px;
+}
+.step-progress{display:flex;align-items:center;gap:8px}
+.step-dots{display:flex;gap:4px;flex:1}
+.step-dot{height:4px;border-radius:2px;flex:1;background:var(--border);transition:all 0.25s}
+.step-dot.done{background:var(--accent2)}
+.step-dot.active{background:var(--accent)}
+.step-label{font-family:var(--fm);font-size:0.62rem;color:var(--text-muted);white-space:nowrap}
+
+/* ── Mobile zone tabs (scrollable) ── */
+.zone-bar{display:flex;align-items:center;gap:7px;margin-bottom:20px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding-bottom:2px}
+.zone-bar::-webkit-scrollbar{display:none}
+.zone-tab{font-family:var(--fm);font-size:0.68rem;padding:6px 11px;border-radius:6px;cursor:pointer;color:var(--text-muted);border:1px solid var(--border);background:var(--surface2);transition:all 0.15s;display:inline-flex;align-items:center;gap:5px;white-space:nowrap;flex-shrink:0}
+.zone-tab.active{border-color:var(--accent4);color:var(--accent4);background:rgba(124,158,245,0.08)}
+.zone-tab .zdot{width:7px;height:7px;border-radius:50%;background:currentColor;flex-shrink:0}
+.zone-tab .zx{opacity:0.45;font-size:0.72rem;margin-left:2px}.zone-tab .zx:hover{opacity:1;color:var(--accent3)}
+.add-zone-btn{font-family:var(--fm);font-size:0.68rem;padding:6px 10px;border-radius:6px;cursor:pointer;color:var(--accent);border:1px dashed rgba(232,160,32,0.4);background:transparent;transition:all 0.15s;white-space:nowrap;flex-shrink:0}
+.add-zone-btn:hover,.add-zone-btn:active{background:rgba(232,160,32,0.07);border-style:solid}
+
+/* ── Zone name ── */
+.zone-header{display:flex;align-items:center;gap:10px;margin-bottom:16px}
+.zone-name-input{font-family:var(--fd);font-size:1.15rem;background:transparent;border:none;border-bottom:2px solid var(--border);color:var(--text);padding:3px 0;flex:1;min-width:0;transition:border-color 0.15s}
+.zone-name-input:focus{outline:none;border-bottom-color:var(--accent4)}
+.zone-dot-lg{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+
+/* ── Content typography ── */
+.sec-hd{margin-bottom:18px}
+.sec-tag{font-family:var(--fm);font-size:0.56rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--accent);margin-bottom:4px}
+.sec-hd h2{font-family:var(--fd);font-size:1.6rem;letter-spacing:-0.02em;margin-bottom:4px}
+.sec-hd p{color:var(--text-muted);font-size:0.8rem;line-height:1.7}
+.sub-title{font-size:0.64rem;font-family:var(--fm);text-transform:uppercase;letter-spacing:0.1em;color:var(--text-dim);margin:18px 0 9px;display:flex;align-items:center;gap:8px}
+.sub-title::after{content:'';flex:1;height:1px;background:var(--border)}
+
+/* ── Forms ── */
+.fg{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:13px}
+.fg.three{grid-template-columns:1fr 1fr 1fr}
+.fg.one{grid-template-columns:1fr}
+.field{display:flex;flex-direction:column;gap:4px}
+.field label{font-size:0.72rem;color:var(--text-muted);font-weight:500}
+.field label .u{font-family:var(--fm);font-size:0.6rem;color:var(--text-dim);margin-left:2px}
+.field .hint{font-size:0.66rem;color:var(--text-dim);line-height:1.5}
+input,select{
+  background:var(--surface2);border:1px solid var(--border);color:var(--text);
+  padding:10px 12px;border-radius:8px;
+  font-family:var(--fm);font-size:0.85rem;
+  transition:border-color 0.15s,box-shadow 0.15s;
+  width:100%;-webkit-appearance:none;
+  min-height:42px; /* touch target */
+}
+input:focus,select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(232,160,32,0.09)}
+input[type=number]{-moz-appearance:textfield}
+input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none}
+
+/* ── Explainers ── */
+.explainer{background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--accent2);border-radius:var(--radius);padding:11px 14px;margin-bottom:14px;font-size:0.76rem;color:var(--text-muted);line-height:1.7}
+.explainer strong{color:var(--accent2)}
+.explainer.warn{border-left-color:var(--accent)}.explainer.warn strong{color:var(--accent)}
+
+/* ── Buttons ── */
+.btn{display:inline-flex;align-items:center;gap:6px;border:none;padding:10px 18px;border-radius:8px;font-family:var(--fb);font-weight:500;font-size:0.85rem;cursor:pointer;transition:all 0.15s;min-height:42px}
+.btn-primary{background:var(--accent);color:#0f1117}.btn-primary:hover{background:#f0b030}.btn-primary:active{transform:scale(0.98)}
+.btn-secondary{background:var(--surface2);color:var(--text-muted);border:1px solid var(--border)}.btn-secondary:hover{background:var(--surface3);color:var(--text)}
+.btn-nav{margin-top:22px;padding-top:16px;border-top:1px solid var(--border);display:flex;gap:8px;flex-wrap:wrap}
+/* Extra bottom padding on mobile so content isn't hidden behind bottom nav */
+.mobile-padding{height:80px;display:none}
+
+/* ── Result cards ── */
+.rcard{background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;margin-bottom:9px}
+.rcard.hl{border-color:var(--accent);background:rgba(232,160,32,0.05)}
+.rcard.hl-cool{border-color:var(--accent2);background:rgba(79,195,161,0.05)}
+.rc-label{font-size:0.62rem;font-family:var(--fm);text-transform:uppercase;letter-spacing:0.07em;color:var(--text-dim);margin-bottom:4px}
+.rc-val{font-family:var(--fd);font-size:1.4rem;color:var(--accent)}
+.rc-val.cool{color:var(--accent2)}
+.rc-sub{font-size:0.66rem;color:var(--text-dim);margin-top:2px}
+.brow{display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--border);font-size:0.73rem}
+.brow:last-child{border-bottom:none}
+.brow .bl{color:var(--text-muted)}
+.brow .bv{font-family:var(--fm);color:var(--text)}
+.verdict{border-radius:var(--radius);padding:9px 12px;font-size:0.74rem;line-height:1.6;margin:6px 0}
+.verdict.good{background:rgba(79,195,161,0.1);border:1px solid rgba(79,195,161,0.25);color:var(--accent2)}
+.verdict.warn{background:rgba(232,160,32,0.1);border:1px solid rgba(232,160,32,0.25);color:var(--accent)}
+.verdict.over{background:rgba(224,82,82,0.1);border:1px solid rgba(224,82,82,0.25);color:var(--accent3)}
+
+/* ── Summary table ── */
+.table-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;margin-top:14px}
+.summary-table{width:100%;border-collapse:collapse;font-size:0.75rem;min-width:520px}
+.summary-table th{text-align:left;padding:6px 8px;font-family:var(--fm);font-size:0.58rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-dim);border-bottom:2px solid var(--border);font-weight:400;white-space:nowrap}
+.summary-table td{padding:8px 8px;border-bottom:1px solid var(--border);color:var(--text-muted);vertical-align:middle;white-space:nowrap}
+.summary-table td:first-child{color:var(--text)}
+.summary-table td.mono{font-family:var(--fm)}
+.summary-table .total-row td{border-top:2px solid var(--border);color:var(--text);font-weight:600;font-family:var(--fm);background:var(--surface)}
+.zone-chip{display:inline-flex;align-items:center;gap:4px;padding:2px 6px;border-radius:4px;font-size:0.65rem;font-family:var(--fm)}
+
+/* ── Landing ── */
+.landing{max-width:580px;padding:24px 0}
+.landing h2{font-family:var(--fd);font-size:2rem;letter-spacing:-0.03em;margin-bottom:10px;line-height:1.1}
+.landing h2 em{color:var(--accent);font-style:normal}
+.landing .lead{color:var(--text-muted);font-size:0.85rem;line-height:1.75;margin-bottom:22px}
+.feature-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:22px}
+.feat{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:13px}
+.feat .fi{font-size:1.1rem;margin-bottom:6px}
+.feat h4{font-size:0.78rem;font-weight:600;margin-bottom:2px}
+.feat p{font-size:0.7rem;color:var(--text-muted);line-height:1.5}
+
+/* ── Mobile live estimate pill (tap to open drawer) ── */
+.live-pill{
+  display:none;
+  position:fixed;
+  bottom:calc(var(--bottom-nav-h) + var(--safe-bottom) + 10px);
+  right:14px;
+  background:var(--accent);
+  color:#0f1117;
+  border:none;
+  border-radius:24px;
+  padding:8px 14px 8px 10px;
+  font-family:var(--fm);
+  font-size:0.7rem;
+  font-weight:600;
+  cursor:pointer;
+  z-index:390;
+  display:none;
+  align-items:center;
+  gap:7px;
+  box-shadow:0 4px 20px rgba(232,160,32,0.35);
+  transition:transform 0.15s;
+}
+.live-pill:active{transform:scale(0.96)}
+.live-pill .pill-heat{font-family:var(--fd);font-size:0.9rem}
+
+/* ══════════════════════════════════
+   RESPONSIVE BREAKPOINTS
+   ══════════════════════════════════ */
+
+/* Tablet: hide side panels, show bottom nav */
+@media(max-width:1000px){
+  .app-shell{grid-template-columns:1fr;grid-template-rows:1fr}
+  .sidenav,.rpanel{display:none}
+  .mobile-nav{display:flex}
+  .live-pill{display:flex}
+  .mobile-step-bar{display:block}
+  .mobile-padding{display:block}
+  .main-scroll{padding:0}
+  /* account for bottom nav */
+  .app-shell{padding-bottom:0}
+}
+
+/* Phone: tighten grids */
+@media(max-width:600px){
+  header{padding:0 14px;gap:8px}
+  header h1{font-size:1.1rem}
+  .badge{display:none}
+  .fg,.fg.three{grid-template-columns:1fr 1fr}
+  main{padding:0}
+  .sec-hd h2{font-size:1.35rem}
+  .landing h2{font-size:1.6rem}
+  .feature-grid{grid-template-columns:1fr 1fr}
+}
+
+@media(max-width:400px){
+  .fg,.fg.three{grid-template-columns:1fr}
+  .mode-tab{font-size:0.58rem;padding:4px 8px}
+}
+</style>
+</head>
+<body>
+
+<!-- ── Header ── -->
+<header>
+  <h1>Manual <span>J</span></h1>
+  <span class="badge">Multi-Zone</span>
+  <div class="mode-bar">
+    <button class="mode-tab active" id="modeWhole" onclick="setMode('whole')">Whole Home</button>
+    <button class="mode-tab" id="modeZones" onclick="setMode('zones')">Zone-by-Zone</button>
+  </div>
+</header>
+
+<!-- ── App shell ── -->
+<div class="app-shell">
+  <nav class="sidenav" id="sidenav"></nav>
+
+  <div class="main-scroll" id="mainScroll">
+    <!-- Mobile step progress bar (injected here) -->
+    <div class="mobile-step-bar" id="mobileStepBar" style="display:none"></div>
+    <!-- Page content -->
+    <div id="mainContent" style="padding:0 18px"></div>
+    <div class="mobile-padding"></div>
+  </div>
+
+  <aside class="rpanel">
+    <div class="rpanel-label" id="rpanelLabel">Live Estimate</div>
+    <div id="rpanelContent"><div style="text-align:center;padding:32px 10px;color:var(--text-dim);font-size:0.76rem">Fill in building details to see a live load estimate.</div></div>
+  </aside>
+</div>
+
+<!-- ── Mobile bottom navigation ── -->
+<nav class="mobile-nav" id="mobileNav">
+  <button class="mobile-nav-item" id="mbn-back" onclick="mobileBack()">
+    <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+    <span>Back</span>
+  </button>
+  <button class="mobile-nav-item" id="mbn-nav" onclick="toggleMobileMenu()">
+    <svg viewBox="0 0 24 24"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+    <span>Steps</span>
+  </button>
+  <button class="mobile-nav-item" id="mbn-est" onclick="openDrawer()">
+    <svg viewBox="0 0 24 24"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
+    <span>Estimate</span>
+  </button>
+  <button class="mobile-nav-item" id="mbn-next" onclick="mobileNext()">
+    <svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg>
+    <span>Next</span>
+  </button>
+</nav>
+
+<!-- ── Mobile step menu overlay ── -->
+<div class="drawer-overlay" id="menuOverlay" onclick="closeMobileMenu()" style="display:none"></div>
+<div class="drawer" id="mobileMenu" style="display:none">
+  <div class="drawer-handle"></div>
+  <div class="drawer-header">
+    <h3>Jump to Step</h3>
+    <button class="drawer-close" onclick="closeMobileMenu()">Close</button>
+  </div>
+  <div class="drawer-body" id="mobileMenuBody"></div>
+</div>
+
+<!-- ── Live estimate drawer ── -->
+<div class="drawer-overlay" id="drawerOverlay" onclick="closeDrawer()" style="display:none"></div>
+<div class="drawer" id="estDrawer" style="display:none">
+  <div class="drawer-handle"></div>
+  <div class="drawer-header">
+    <h3 id="drawerTitle">Live Estimate</h3>
+    <button class="drawer-close" onclick="closeDrawer()">Close</button>
+  </div>
+  <div class="drawer-body" id="drawerBody"></div>
+</div>
+
+<!-- ── Mobile live pill ── -->
+<button class="live-pill" id="livePill" onclick="openDrawer()">
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
+  <span class="pill-heat" id="pillHeat">—</span>
+  <span>BTU/hr</span>
+</button>
+
+<script>
+// ══════════════════════════════════════════
+// STATE
+// ══════════════════════════════════════════
+const ZONE_COLORS=['#7c9ef5','#4fc3a1','#e8a020','#e05252','#b07cda','#f07c4a','#5cc8e8','#e87cb8'];
+let mode='whole', currentStep=0, currentZone=0;
+let climate={heat_design:9,heat_indoor:70,cool_design:91,cool_indoor:75,grains:65};
+
+function mkZone(name,fa,wa,ca,occ,fCap,aCap){
+  return{name,floor_area:fa,ceiling_height:9,wall_area:wa,ceiling_area:ca,
+    floor_uncond:0,bg_wall_area:0,r_wall:15,r_ceiling:38,r_floor:19,r_bg_wall:0,
+    window_area:Math.round(fa*0.12),window_u:0.30,window_shgc:0.25,south_window:Math.round(fa*0.04),
+    door_area:40,door_type:'insulated',infiltration:'average',custom_ach:7,
+    vent_cfm:0,ventilation:'none',occupants:occ,lighting:0.8,appliances:800,
+    furnace_cap:fCap,ac_cap:aCap,duct_location:'attic',duct_leakage:'average',result:null};
+}
+let wholeZone=mkZone('Whole Home',2000,1400,1000,4,80000,36000);
+let zones=[
+  mkZone('Zone 1 — Main Floor',800,600,400,2,60000,24000),
+  mkZone('Zone 2 — Upper Floor',700,500,350,2,60000,24000),
+  mkZone('Zone 3 — Basement',400,400,200,0,40000,18000),
+  mkZone('Zone 4 — Addition',300,320,150,1,40000,18000),
+];
+
+// ══════════════════════════════════════════
+// CALC ENGINE
+// ══════════════════════════════════════════
+function calcZone(z,cl){
+  const hDT=cl.heat_indoor-cl.heat_design, cDT=cl.cool_design-cl.cool_indoor;
+  const uW=1/Math.max(z.r_wall,1),uC=1/Math.max(z.r_ceiling,1),uF=1/Math.max(z.r_floor,1);
+  const uBG=z.r_bg_wall>0?1/z.r_bg_wall:0;
+  const dR={solid_wood:2,insulated:5,fiberglass:7};
+  const uD=1/(dR[z.door_type]||5);
+  const a50m={tight:2,average:7,loose:15,very_loose:25,custom:z.custom_ach};
+  const ach50=a50m[z.infiltration]||7;
+  const vol=z.floor_area*z.ceiling_height;
+  const airCFM=(ach50/18*vol)/60;
+  const vEff=z.ventilation==='balanced'?0.25:1.0;
+  const HW=uW*z.wall_area*hDT,HC=uC*z.ceiling_area*hDT;
+  const HWin=z.window_u*z.window_area*hDT,HD=uD*z.door_area*hDT;
+  const HF=z.floor_uncond>0?uF*z.floor_uncond*hDT*0.65:0;
+  const HBG=uBG*z.bg_wall_area*(cl.heat_indoor-52);
+  const HInf=1.1*airCFM*hDT,HVent=1.1*z.vent_cfm*hDT*vEff;
+  const solCredit=z.south_window*z.window_shgc*55*0.30;
+  const dMH=z.duct_location==='conditioned'?1.0:z.duct_leakage==='tight'?1.06:z.duct_leakage==='average'?1.13:1.22;
+  const HR=HW+HC+HWin+HD+HF+HBG+HInf+HVent;
+  const HDuct=HR*(dMH-1);
+  const HEAT=Math.max(8000,Math.round((HR-solCredit+HDuct)/500)*500);
+  const CW=uW*z.wall_area*cDT*1.15,CC=uC*z.ceiling_area*(cDT+18);
+  const CWc=z.window_u*z.window_area*cDT,CDoor=uD*z.door_area*cDT;
+  const CSol=z.window_area*z.window_shgc*125*0.60;
+  const CIs=1.1*airCFM*cDT,CIl=0.68*airCFM*Math.max(0,cl.grains-60);
+  const CVs=1.1*z.vent_cfm*cDT*vEff,CVl=0.68*z.vent_cfm*Math.max(0,cl.grains-60)*vEff;
+  const CPpl=z.occupants*250,CPplL=z.occupants*200;
+  const CLgt=z.lighting*z.floor_area*3.41;
+  const dMC=z.duct_location==='conditioned'?1.0:z.duct_leakage==='tight'?1.08:z.duct_leakage==='average'?1.16:1.26;
+  const CSens=CW+CC+CWc+CDoor+CSol+CIs+CVs+CPpl+CLgt+z.appliances;
+  const CLat=CIl+CVl+CPplL,CDuct=CSens*(dMC-1);
+  const COOL=Math.max(6000,Math.round((CSens+CLat+CDuct)/500)*500);
+  return{HEAT,COOL,recH:Math.ceil(HEAT*1.15/5000)*5000,recC:Math.ceil(COOL*1.10/6000)*6000,
+    SHR:(CSens/Math.max(CSens+CLat,1)).toFixed(2),hDT,cDT,
+    bd:{HW,HC,HWin,HD,HF,HBG,HInf,HVent,HDuct,solCredit}};
+}
+function fmt(n){return Math.round(n).toLocaleString()}
+
+// ══════════════════════════════════════════
+// MODE
+// ══════════════════════════════════════════
+function setMode(m){
+  mode=m;currentStep=0;
+  document.getElementById('modeWhole').classList.toggle('active',m==='whole');
+  document.getElementById('modeZones').classList.toggle('active',m==='zones');
+  render();
+}
+
+// ══════════════════════════════════════════
+// STEP DEFINITIONS
+// ══════════════════════════════════════════
+const WH_STEPS=[{l:'Overview'},{l:'Climate'},{l:'Envelope'},{l:'Windows'},{l:'Infiltration'},{l:'Internals'},{l:'Equipment'},{l:'Results'}];
+const Z_STEPS=[{l:'Climate'},{l:'Envelope'},{l:'Windows'},{l:'Infiltration'},{l:'Internals'},{l:'Equipment'},{l:'Zone Results'}];
+
+function maxStep(){return mode==='whole'?WH_STEPS.length-1:7}
+function stepLabel(s){
+  if(mode==='zones'&&s===7)return'All Zones';
+  return mode==='whole'?WH_STEPS[s]?.l:Z_STEPS[s]?.l||'';
+}
+
+// ══════════════════════════════════════════
+// RENDER
+// ══════════════════════════════════════════
+function render(){
+  renderSidenav();
+  renderMobileNav();
+  renderMobileStepBar();
+  const html=mode==='whole'?wholePageHTML(currentStep):(currentStep===7?summaryHTML():zonePageHTML(currentStep));
+  setPage(html);
+  updatePanel();
+}
+
+function renderSidenav(){
+  const steps=mode==='whole'?WH_STEPS:Z_STEPS;
+  let html=`<div class="nav-label">${mode==='whole'?'Whole Home':'Zone Steps'}</div>`;
+  steps.forEach((s,i)=>{
+    html+=`<div class="nav-link ${i===currentStep?'active':''}" onclick="goStep(${i})"><span class="nn">${String(i+(mode==='zones'?1:0)).padStart(2,'0')}</span>${s.l}</div>`;
+  });
+  if(mode==='zones'){
+    html+=`<div style="height:1px;background:var(--border);margin:12px 0"></div><div class="nav-label">Summary</div>`;
+    html+=`<div class="nav-link ${currentStep===7?'active':''}" onclick="goStep(7)"><span class="nn">Σ</span>All Zones</div>`;
+  }
+  document.getElementById('sidenav').innerHTML=html;
+}
+
+function renderMobileNav(){
+  const isMobile=window.innerWidth<=1000;
+  if(!isMobile)return;
+  const back=document.getElementById('mbn-back');
+  const next=document.getElementById('mbn-next');
+  back.style.opacity=currentStep===0?'0.3':'1';
+  back.style.pointerEvents=currentStep===0?'none':'auto';
+  const atEnd=currentStep>=maxStep();
+  next.style.opacity=atEnd?'0.3':'1';
+  next.style.pointerEvents=atEnd?'none':'auto';
+}
+
+function renderMobileStepBar(){
+  const isMobile=window.innerWidth<=1000;
+  const bar=document.getElementById('mobileStepBar');
+  if(!isMobile){bar.style.display='none';return;}
+  const steps=mode==='whole'?WH_STEPS:(currentStep===7?[...Z_STEPS,{l:'Summary'}]:Z_STEPS);
+  const total=steps.length;
+  const dots=steps.map((_,i)=>`<div class="step-dot ${i<currentStep?'done':i===currentStep?'active':''}"></div>`).join('');
+  bar.style.display='block';
+  bar.innerHTML=`<div class="step-progress"><div class="step-dots">${dots}</div><span class="step-label">${stepLabel(currentStep)}</span></div>`;
+}
+
+function mobileBack(){if(currentStep>0)goStep(currentStep-1)}
+function mobileNext(){
+  const max=maxStep();
+  if(currentStep<max)goStep(currentStep+1);
+}
+
+// ══════════════════════════════════════════
+// MOBILE MENU (steps)
+// ══════════════════════════════════════════
+function toggleMobileMenu(){
+  const menu=document.getElementById('mobileMenu');
+  if(menu.style.display==='none'||!menu.classList.contains('open'))openMobileMenu();
+  else closeMobileMenu();
+}
+function openMobileMenu(){
+  const steps=mode==='whole'?WH_STEPS:Z_STEPS;
+  let html='';
+  steps.forEach((s,i)=>{
+    html+=`<div class="nav-link ${i===currentStep?'active':''}" onclick="goStep(${i});closeMobileMenu()" style="border-radius:8px;margin-bottom:2px">
+      <span class="nn">${String(i+(mode==='zones'?1:0)).padStart(2,'0')}</span>${s.l}</div>`;
+  });
+  if(mode==='zones'){
+    html+=`<div style="height:1px;background:var(--border);margin:8px 0"></div>`;
+    html+=`<div class="nav-link ${currentStep===7?'active':''}" onclick="goStep(7);closeMobileMenu()" style="border-radius:8px"><span class="nn">Σ</span>All Zones Summary</div>`;
+  }
+  document.getElementById('mobileMenuBody').innerHTML=html;
+  const overlay=document.getElementById('menuOverlay');
+  const menu=document.getElementById('mobileMenu');
+  overlay.style.display='block';menu.style.display='block';
+  requestAnimationFrame(()=>menu.classList.add('open'));
+}
+function closeMobileMenu(){
+  const overlay=document.getElementById('menuOverlay');
+  const menu=document.getElementById('mobileMenu');
+  menu.classList.remove('open');
+  setTimeout(()=>{menu.style.display='none';overlay.style.display='none'},300);
+}
+
+// ══════════════════════════════════════════
+// ESTIMATE DRAWER
+// ══════════════════════════════════════════
+function openDrawer(){
+  const z=mode==='whole'?wholeZone:zones[currentZone];
+  const r=calcZone(z,climate);
+  const col=mode==='zones'?ZONE_COLORS[currentZone%ZONE_COLORS.length]:null;
+  document.getElementById('drawerTitle').innerHTML=mode==='zones'?`<span style="color:${col}">●</span> ${z.name}`:'Live Estimate';
+  document.getElementById('drawerBody').innerHTML=livePanelHTML(r,z);
+  const overlay=document.getElementById('drawerOverlay');
+  const drawer=document.getElementById('estDrawer');
+  overlay.style.display='block';drawer.style.display='block';
+  requestAnimationFrame(()=>drawer.classList.add('open'));
+}
+function closeDrawer(){
+  const overlay=document.getElementById('drawerOverlay');
+  const drawer=document.getElementById('estDrawer');
+  drawer.classList.remove('open');
+  setTimeout(()=>{drawer.style.display='none';overlay.style.display='none'},300);
+}
+
+// ══════════════════════════════════════════
+// PAGE BUILDERS
+// ══════════════════════════════════════════
+function wholePageHTML(s){
+  if(s===0)return landingHTML();
+  if(s===1)return climateHTML('wh',0,2);
+  if(s===2)return envelopeHTML('wh',1,3);
+  if(s===3)return windowsHTML('wh',2,4);
+  if(s===4)return infiltHTML('wh',3,5);
+  if(s===5)return internalHTML('wh',4,6);
+  if(s===6)return equipHTML('wh',5,7);
+  if(s===7){
+    const r=calcZone(wholeZone,climate);wholeZone.result=r;
+    return `<div class="sec-hd"><div class="sec-tag">Results</div><h2>Whole-Home Load</h2><p>Complete heating and cooling load with equipment comparison.</p></div>`
+      +resultsHTML(r,wholeZone)
+      +`<div class="btn-nav"><button class="btn btn-secondary" onclick="goStep(6)">← Back</button><button class="btn btn-primary" onclick="window.print()">🖨 Print</button></div>`;
+  }
+  return '';
+}
+
+function zonePageHTML(s){
+  const z=zones[currentZone],col=ZONE_COLORS[currentZone%ZONE_COLORS.length];
+  const titles=['Climate & Design','Building Envelope','Windows & Doors','Infiltration','Internal Gains','Equipment','Zone Results'];
+  const descs=['Shared across all zones — your local outdoor conditions.','Envelope areas specific to this zone only.','Windows and doors in this zone only.','Air leakage for this zone.','Occupants, lighting, and appliances in this zone.','The furnace and AC unit serving this zone.','Calculated load for this zone.'];
+  const content=[
+    climateHTML('z',null,1),envelopeHTML('z',0,2),windowsHTML('z',1,3),
+    infiltHTML('z',2,4),internalHTML('z',3,5),equipHTML('z',4,6),zoneResultHTML()
+  ][s]||'';
+  return zoneTabs()+
+    `<div class="zone-header"><span class="zone-dot-lg" style="background:${col}"></span>
+     <input class="zone-name-input" value="${z.name}" oninput="zones[${currentZone}].name=this.value"></div>
+     <div class="sec-hd"><div class="sec-tag">${Z_STEPS[s]?.l||''}</div><h2>${titles[s]}</h2><p>${descs[s]}</p></div>
+     ${s===0?`<div class="explainer warn"><strong>Shared setting:</strong> Climate settings apply to all zones.</div>`:''}`
+    +content;
+}
+
+function zoneTabs(){
+  return `<div class="zone-bar">`+
+    zones.map((z,i)=>`<div class="zone-tab ${i===currentZone?'active':''}" onclick="switchZone(${i})">
+      <span class="zdot" style="background:${ZONE_COLORS[i%ZONE_COLORS.length]};opacity:1"></span>
+      ${z.name}
+      ${zones.length>1?`<span class="zx" onclick="event.stopPropagation();removeZone(${i})">✕</span>`:''}
+    </div>`).join('')+
+    (zones.length<8?`<button class="add-zone-btn" onclick="addZone()">+ Zone</button>`:'')
+    +`</div>`;
+}
+
+function zoneResultHTML(){
+  const z=zones[currentZone],r=calcZone(z,climate);z.result=r;
+  return resultsHTML(r,z)+`<div class="btn-nav"><button class="btn btn-secondary" onclick="goStep(5)">← Back</button><button class="btn btn-primary" onclick="goStep(7)">All Zones →</button></div>`;
+}
+
+function summaryHTML(){
+  zones.forEach(z=>{z.result=calcZone(z,climate);});
+  const tH=zones.reduce((s,z)=>s+z.result.HEAT,0);
+  const tC=zones.reduce((s,z)=>s+z.result.COOL,0);
+  const tFA=zones.reduce((s,z)=>s+z.floor_area,0);
+  const tFurn=zones.reduce((s,z)=>s+z.furnace_cap,0);
+  const tAC=zones.reduce((s,z)=>s+z.ac_cap,0);
+  return `<div class="sec-hd"><div class="sec-tag">Summary</div><h2>All Zones Combined</h2><p>Individual loads per zone and your combined whole-home demand.</p></div>
+  <div class="explainer warn"><strong>4-zone system:</strong> Four separate furnace/AC pairs is uncommon residentially. It provides zone-level comfort control and redundancy. The table below shows each zone's calculated load vs. installed equipment.</div>
+  <div class="table-scroll"><table class="summary-table"><thead><tr><th>Zone</th><th>ft²</th><th>Heating</th><th>BTU/ft²</th><th>Cooling</th><th>Furnace (ratio)</th><th>AC</th></tr></thead><tbody>
+  ${zones.map((z,i)=>{
+    const r=z.result,col=ZONE_COLORS[i%ZONE_COLORS.length];
+    const hR=(z.furnace_cap/r.HEAT).toFixed(2);
+    const hC=parseFloat(hR)<=1.35?'var(--accent2)':parseFloat(hR)<=1.8?'var(--accent)':'var(--accent3)';
+    return `<tr><td><span class="zone-chip" style="background:${col}18;color:${col};border:1px solid ${col}50">● ${z.name}</span></td>
+    <td class="mono">${z.floor_area.toLocaleString()}</td>
+    <td class="mono">${fmt(r.HEAT)}</td>
+    <td class="mono">${Math.round(r.HEAT/z.floor_area)}</td>
+    <td class="mono">${(r.COOL/12000).toFixed(1)}T</td>
+    <td class="mono"><span style="color:${hC}">${(z.furnace_cap/1000).toFixed(0)}k (${hR}×)</span></td>
+    <td class="mono">${(z.ac_cap/12000).toFixed(1)}T</td></tr>`;
+  }).join('')}
+  </tbody><tfoot><tr class="total-row"><td>TOTAL</td><td>${tFA.toLocaleString()}</td><td>${fmt(tH)}</td><td>${Math.round(tH/tFA)}</td><td>${(tC/12000).toFixed(1)}T</td><td>${(tFurn/1000).toFixed(0)}k</td><td>${(tAC/12000).toFixed(1)}T</td></tr></tfoot></table></div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:11px;margin-top:16px">
+    <div class="rcard hl"><div class="rc-label">Combined Heating</div><div class="rc-val">${fmt(tH)}<span style="font-family:var(--fb);font-size:0.7rem;color:var(--text-muted);margin-left:3px">BTU/hr</span></div><div class="rc-sub">${(tH/12000).toFixed(1)} tons · ${Math.round(tH/tFA)} BTU/ft²</div></div>
+    <div class="rcard hl-cool"><div class="rc-label">Combined Cooling</div><div class="rc-val cool">${fmt(tC)}<span style="font-family:var(--fb);font-size:0.7rem;color:var(--text-muted);margin-left:3px">BTU/hr</span></div><div class="rc-sub">${(tC/12000).toFixed(1)} tons total</div></div>
+  </div>
+  <div class="explainer" style="margin-top:14px"><strong>Sizing note:</strong> Ratios above 1.5× indicate oversizing. Short cycling (5–10 min cycles) at mild temps is a classic signature. Ideal ratio: 1.0–1.35×.</div>
+  <div class="btn-nav"><button class="btn btn-secondary" onclick="goStep(6)">← Zone Results</button><button class="btn btn-primary" onclick="window.print()">🖨 Print All</button></div>`;
+}
+
+// ══════════════════════════════════════════
+// FORM BUILDERS
+// ══════════════════════════════════════════
+function climateHTML(pfx,prev,next){
+  const cl=climate;
+  const presets=[['Boston MA','9,70,91,75,65'],['Chicago IL','-5,70,91,75,68'],
+    ['New York NY','14,70,92,75,66'],['Minneapolis MN','-15,70,88,75,60'],
+    ['Washington DC','18,70,92,75,70'],['Atlanta GA','26,70,93,75,77'],
+    ['Dallas TX','25,70,99,75,78'],['Phoenix AZ','37,70,108,75,32'],['Seattle WA','28,70,85,75,55']];
+  return `${pfx==='wh'?`<div class="sec-hd"><div class="sec-tag">Step 01</div><h2>Climate & Design</h2><p>Your local outdoor design conditions. Boston defaults pre-filled.</p></div>`:''}
+  <div class="explainer"><strong>Design temps</strong> are the 99th-percentile cold / 1st-percentile hot outdoor temperatures for your city — not averages. Boston: heating ≈ <strong>9°F</strong>, cooling ≈ <strong>91°F</strong>.</div>
+  <div class="fg">
+    <div class="field"><label>City Preset</label><select onchange="applyPreset(this.value)">
+      <option value="">— select or enter manually —</option>
+      ${presets.map(([l,v])=>`<option value="${v}" ${cl.heat_design==v.split(',')[0]&&cl.cool_design==v.split(',')[2]?'selected':''}>${l}</option>`).join('')}
+    </select></div>
+    <div class="field"><label>Humidity <span class="u">gr/lb</span></label><input type="number" inputmode="numeric" value="${cl.grains}" oninput="climate.grains=+this.value;updatePanel()"><span class="hint">Boston≈65 · South≈80+ · Desert≈35</span></div>
+    <div class="field"><label>Heating Design <span class="u">°F outdoor</span></label><input type="number" inputmode="numeric" value="${cl.heat_design}" oninput="climate.heat_design=+this.value;updatePanel()"></div>
+    <div class="field"><label>Heat Setpoint <span class="u">°F indoor</span></label><input type="number" inputmode="numeric" value="${cl.heat_indoor}" oninput="climate.heat_indoor=+this.value;updatePanel()"></div>
+    <div class="field"><label>Cooling Design <span class="u">°F outdoor</span></label><input type="number" inputmode="numeric" value="${cl.cool_design}" oninput="climate.cool_design=+this.value;updatePanel()"></div>
+    <div class="field"><label>Cool Setpoint <span class="u">°F indoor</span></label><input type="number" inputmode="numeric" value="${cl.cool_indoor}" oninput="climate.cool_indoor=+this.value;updatePanel()"></div>
+  </div>
+  <div class="btn-nav">${prev!==null?`<button class="btn btn-secondary" onclick="goStep(${prev})">← Back</button>`:''}<button class="btn btn-primary" onclick="goStep(${next})">Next: Envelope →</button></div>`;
+}
+
+function envelopeHTML(pfx,prev,next){
+  const z=pfx==='wh'?wholeZone:zones[currentZone];
+  const W=(k,lbl,hint='')=>`<div class="field"><label>${lbl}</label><input type="number" inputmode="decimal" value="${z[k]}" oninput="zset('${pfx}','${k}',+this.value)">${hint?`<span class="hint">${hint}</span>`:''}</div>`;
+  const S=(k,lbl,opts)=>`<div class="field"><label>${lbl}</label><select oninput="zset('${pfx}','${k}',+this.value)">
+    ${opts.map(([l,v])=>`<option value="${v}" ${String(z[k])===String(v)?'selected':''}>${l}</option>`).join('')}</select></div>`;
+  return `${pfx==='wh'?`<div class="sec-hd"><div class="sec-tag">Step 02</div><h2>Building Envelope</h2><p>Every surface separating conditioned space from outside.</p></div>`:''}
+  <div class="explainer"><strong>Wall area</strong> = perimeter × ceiling height minus windows/doors. R-values are on insulation packaging (R-13, R-38, etc.).</div>
+  <div class="sub-title">Geometry</div>
+  <div class="fg three">
+    ${W('floor_area','Floor Area <span class="u">ft²</span>')}
+    ${W('ceiling_height','Ceiling Ht <span class="u">ft</span>')}
+    ${W('wall_area','Wall Area <span class="u">ft²</span>','Perimeter×ht minus openings')}
+    ${W('ceiling_area','Ceiling Area <span class="u">ft²</span>','Top-floor footprint')}
+    ${W('floor_uncond','Floor Over Uncond. <span class="u">ft²</span>','0 if slab/cond. basement')}
+    ${W('bg_wall_area','Below-Grade Wall <span class="u">ft²</span>','Basement walls below grade')}
+  </div>
+  <div class="sub-title">Insulation R-values</div>
+  <div class="fg">
+    ${S('r_wall','Wall R-value',[['Uninsulated (R-2)','2'],['R-11 (2×4 batts)','11'],['R-13/15 (2×4)','15'],['R-19/21 (2×6)','19'],['R-26 (2×6+foam)','26'],['R-30+ (spray foam)','30']])}
+    ${S('r_ceiling','Ceiling R-value',[['R-19','19'],['R-30','30'],['R-38 (common)','38'],['R-49','49'],['R-60','60'],['R-75+','75']])}
+    ${S('r_floor','Floor R-value',[['R-11','11'],['R-19','19'],['R-30','30'],['R-38','38']])}
+    ${S('r_bg_wall','Below-Grade R',[['Uninsulated (0)','0'],['R-5','5'],['R-10','10'],['R-15','15'],['R-20','20']])}
+  </div>
+  <div class="btn-nav">${prev!==null?`<button class="btn btn-secondary" onclick="goStep(${prev})">← Back</button>`:''}<button class="btn btn-primary" onclick="goStep(${next})">Next: Windows →</button></div>`;
+}
+
+function windowsHTML(pfx,prev,next){
+  const z=pfx==='wh'?wholeZone:zones[currentZone];
+  const W=(k,lbl,step,hint='')=>`<div class="field"><label>${lbl}</label><input type="number" inputmode="decimal" value="${z[k]}" step="${step}" oninput="zset('${pfx}','${k}',+this.value)">${hint?`<span class="hint">${hint}</span>`:''}</div>`;
+  const S=(k,lbl,opts)=>`<div class="field"><label>${lbl}</label><select oninput="zset('${pfx}','${k}',this.value)">
+    ${opts.map(([l,v])=>`<option value="${v}" ${String(z[k])===String(v)?'selected':''}>${l}</option>`).join('')}</select></div>`;
+  return `${pfx==='wh'?`<div class="sec-hd"><div class="sec-tag">Step 03</div><h2>Windows & Doors</h2><p>Often 25–40% of total heat loss. Glazing type and area matter most.</p></div>`:''}
+  <div class="explainer"><strong>Window U-factor</strong> is on the NFRC/ENERGY STAR label. Single pane≈1.0, double low-e≈0.28–0.35, triple≈0.15–0.22.</div>
+  <div class="sub-title">Windows</div>
+  <div class="fg">
+    ${S('window_u','Window Type',[['Single pane, alum (U=1.10)','1.1'],['Single pane, wood (U=0.65)','0.65'],['Dbl pane, clear (U=0.48)','0.48'],['Dbl pane, low-e (U=0.30)','0.30'],['Dbl pane, low-e argon (U=0.25)','0.25'],['Triple pane (U=0.18)','0.18']])}
+    ${W('window_area','Total Window Area <span class="u">ft²</span>','10')}
+    ${W('window_shgc','SHGC','0.01','Low-e≈0.20–0.30 · Clear≈0.60')}
+    ${W('south_window','South-Facing <span class="u">ft²</span>','5','Gets winter solar credit')}
+  </div>
+  <div class="sub-title">Doors</div>
+  <div class="fg">
+    ${S('door_type','Door Type',[['Solid wood (R-2)','solid_wood'],['Insulated steel (R-5)','insulated'],['Insulated fiberglass (R-7)','fiberglass']])}
+    ${W('door_area','Total Door Area <span class="u">ft²</span>','5','Typical door ≈ 20 ft²')}
+  </div>
+  <div class="btn-nav">${prev!==null?`<button class="btn btn-secondary" onclick="goStep(${prev})">← Back</button>`:''}<button class="btn btn-primary" onclick="goStep(${next})">Next: Infiltration →</button></div>`;
+}
+
+function infiltHTML(pfx,prev,next){
+  const z=pfx==='wh'?wholeZone:zones[currentZone];
+  const W=(k,lbl,step,hint='')=>`<div class="field"><label>${lbl}</label><input type="number" inputmode="decimal" value="${z[k]}" step="${step}" oninput="zset('${pfx}','${k}',+this.value)">${hint?`<span class="hint">${hint}</span>`:''}</div>`;
+  const S=(k,lbl,opts)=>`<div class="field"><label>${lbl}</label><select oninput="zset('${pfx}','${k}',this.value)">
+    ${opts.map(([l,v])=>`<option value="${v}" ${z[k]===v?'selected':''}>${l}</option>`).join('')}</select></div>`;
+  return `${pfx==='wh'?`<div class="sec-hd"><div class="sec-tag">Step 04</div><h2>Infiltration</h2><p>Uncontrolled air leakage is often 20–40% of heating load.</p></div>`:''}
+  <div class="explainer"><strong>ACH50</strong> from a blower door test is the most accurate. Without a test, use the descriptions below. Typical 1990s–2000s home: 6–10 ACH50.</div>
+  <div class="fg">
+    ${S('infiltration','Construction Tightness',[['Tight — 2010+ well-sealed (≈2 ACH50)','tight'],['Average — 1990s–2000s (≈7 ACH50)','average'],['Loose — older, some weatherizing (≈15)','loose'],['Very loose — pre-1980 (≈25 ACH50)','very_loose'],['Custom — I have a blower door result','custom']])}
+    ${W('custom_ach','Custom ACH50','0.5','Only if above = Custom')}
+    ${W('vent_cfm','Mech. Ventilation <span class="u">CFM</span>','10','0 if none · ERV/HRV or exhaust')}
+    ${S('ventilation','Ventilation Type',[['None / exhaust-only','none'],['Balanced HRV/ERV (75% recovery)','balanced']])}
+  </div>
+  <div class="btn-nav">${prev!==null?`<button class="btn btn-secondary" onclick="goStep(${prev})">← Back</button>`:''}<button class="btn btn-primary" onclick="goStep(${next})">Next: Internals →</button></div>`;
+}
+
+function internalHTML(pfx,prev,next){
+  const z=pfx==='wh'?wholeZone:zones[currentZone];
+  const W=(k,lbl,step,hint='')=>`<div class="field"><label>${lbl}</label><input type="number" inputmode="decimal" value="${z[k]}" step="${step}" oninput="zset('${pfx}','${k}',+this.value)">${hint?`<span class="hint">${hint}</span>`:''}</div>`;
+  return `${pfx==='wh'?`<div class="sec-hd"><div class="sec-tag">Step 05</div><h2>Internal Gains</h2><p>People, lights, and appliances generate heat — mainly affects cooling load.</p></div>`:''}
+  <div class="explainer"><strong>Why it matters:</strong> Your AC must remove internal heat in addition to outdoor heat gain. Typical home: 1,000–3,000 BTU/hr from occupants, lighting, and appliances.</div>
+  <div class="fg three">
+    ${W('occupants','Occupants <span class="u">peak</span>','1')}
+    ${W('lighting','Lighting <span class="u">W/ft²</span>','0.1','LED≈0.5 · Mixed≈0.8 · Old≈1.5')}
+    ${W('appliances','Appliances <span class="u">BTU/hr</span>','100','Kitchen≈1500 · Office≈300')}
+  </div>
+  <div class="btn-nav">${prev!==null?`<button class="btn btn-secondary" onclick="goStep(${prev})">← Back</button>`:''}<button class="btn btn-primary" onclick="goStep(${next})">Next: Equipment →</button></div>`;
+}
+
+function equipHTML(pfx,prev,next){
+  const z=pfx==='wh'?wholeZone:zones[currentZone];
+  const W=(k,lbl,step,hint='')=>`<div class="field"><label>${lbl}</label><input type="number" inputmode="numeric" value="${z[k]}" step="${step}" oninput="zset('${pfx}','${k}',+this.value)">${hint?`<span class="hint">${hint}</span>`:''}</div>`;
+  const S=(k,lbl,opts)=>`<div class="field"><label>${lbl}</label><select oninput="zset('${pfx}','${k}',this.value)">
+    ${opts.map(([l,v])=>`<option value="${v}" ${z[k]===v?'selected':''}>${l}</option>`).join('')}</select></div>`;
+  return `${pfx==='wh'?`<div class="sec-hd"><div class="sec-tag">Step 06</div><h2>Your Equipment</h2><p>Enter installed capacity so we can compare against calculated load.</p></div>`:''}
+  <div class="explainer"><strong>Finding capacity:</strong> Check the furnace nameplate for input BTU/hr. AC tonnage is often in the model number (e.g., "024" = 24,000 BTU = 2 ton). 12,000 BTU = 1 ton.</div>
+  <div class="fg">
+    ${W('furnace_cap','Furnace Capacity <span class="u">BTU/hr</span>','5000','Input BTU from nameplate — typically 40k–120k')}
+    ${W('ac_cap','AC Capacity <span class="u">BTU/hr</span>','6000','2T=24k · 3T=36k · 4T=48k')}
+    ${S('duct_location','Duct Location',[['Inside conditioned space','conditioned'],['Unconditioned attic','attic'],['Vented crawlspace','crawl']])}
+    ${S('duct_leakage','Duct Leakage',[['Well-sealed (<5%)','tight'],['Typical (5–15%)','average'],['Leaky (>15%)','leaky']])}
+  </div>
+  <div class="btn-nav">${prev!==null?`<button class="btn btn-secondary" onclick="goStep(${prev})">← Back</button>`:''}<button class="btn btn-primary" onclick="goStep(${next})">Calculate Results →</button></div>`;
+}
+
+function landingHTML(){
+  return `<div class="landing">
+  <h2>Manual J for<br>Your <em>Home</em></h2>
+  <p class="lead">The ACCA Manual J method calculates exactly how much heating and cooling your home needs at your local design conditions. Use <strong>Zone-by-Zone</strong> mode to calculate each furnace/AC pair individually.</p>
+  <div class="feature-grid">
+    <div class="feat"><div class="fi">🌡️</div><h4>Design Conditions</h4><p>99th-percentile cold / 1st-percentile hot — not averages.</p></div>
+    <div class="feat"><div class="fi">🧱</div><h4>Envelope Analysis</h4><p>Walls, ceiling, floor, windows — every heat loss surface.</p></div>
+    <div class="feat"><div class="fi">💨</div><h4>Infiltration</h4><p>Air leakage is often 25–40% of heating load.</p></div>
+    <div class="feat"><div class="fi">🏠</div><h4>4-Zone Support</h4><p>Calculate each furnace/AC zone independently.</p></div>
+  </div>
+  <div class="explainer warn" style="margin-bottom:20px"><strong>Multiple zones?</strong> Use the <strong>Zone-by-Zone</strong> toggle in the header. Each zone gets its own inputs and a combined summary.</div>
+  <button class="btn btn-primary" style="font-size:1rem;padding:12px 24px" onclick="goStep(1)">Start →</button>
+  </div>`;
+}
+
+// ══════════════════════════════════════════
+// RESULTS HTML
+// ══════════════════════════════════════════
+function resultsHTML(r,z){
+  const hR=z.furnace_cap/r.HEAT,cR=z.ac_cap/r.COOL;
+  const vClass=ratio=>ratio<0.9?'over':ratio<=1.35?'good':ratio<=1.8?'warn':'over';
+  const vText=(ratio,name,icon)=>{
+    const c=vClass(ratio);
+    const t=ratio<0.9?`may be undersized (${ratio.toFixed(2)}× load).`:
+      ratio<=1.35?`is well-sized (${ratio.toFixed(2)}× load).`:
+      ratio<=1.8?`is slightly oversized (${ratio.toFixed(2)}× load) — watch for short cycling.`:
+      `is significantly oversized (${ratio.toFixed(2)}× load) — likely causing short cycling.`;
+    return `<div class="verdict ${c}">${icon} <strong>${name}</strong> ${t}</div>`;
+  };
+  const B=r.bd;
+  const rows=[['Walls',B.HW],['Ceiling',B.HC],['Windows',B.HWin],['Doors',B.HD],
+    ['Below-grade walls',B.HBG],['Floor over uncond.',B.HF],
+    ['Infiltration',B.HInf],['Ventilation',B.HVent],['Duct losses',B.HDuct],
+    ['Solar credit',-B.solCredit]].filter(([,v])=>Math.abs(v)>50);
+  return `
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:11px;margin-bottom:14px">
+    <div class="rcard hl"><div class="rc-label">Heating Load</div><div class="rc-val">${fmt(r.HEAT)}<span style="font-family:var(--fb);font-size:0.68rem;color:var(--text-muted);margin-left:3px">BTU/hr</span></div><div class="rc-sub">${(r.HEAT/12000).toFixed(1)} tons · ΔT ${r.hDT}°F</div></div>
+    <div class="rcard hl-cool"><div class="rc-label">Cooling Load</div><div class="rc-val cool">${fmt(r.COOL)}<span style="font-family:var(--fb);font-size:0.68rem;color:var(--text-muted);margin-left:3px">BTU/hr</span></div><div class="rc-sub">${(r.COOL/12000).toFixed(1)} tons · SHR ${r.SHR}</div></div>
+  </div>
+  ${vText(hR,'Furnace','🔥')}${vText(cR,'AC / Cooling','❄️')}
+  <div class="rcard" style="margin-top:13px">
+    <div class="rc-label" style="margin-bottom:8px">Equipment Comparison</div>
+    <div class="brow"><span class="bl">Recommended furnace</span><span class="bv">${fmt(r.recH)} BTU/hr</span></div>
+    <div class="brow"><span class="bl">Your furnace</span><span class="bv">${fmt(z.furnace_cap)} BTU/hr</span></div>
+    <div class="brow"><span class="bl">Recommended AC</span><span class="bv">${fmt(r.recC)} (${(r.recC/12000).toFixed(1)}T)</span></div>
+    <div class="brow"><span class="bl">Your AC</span><span class="bv">${fmt(z.ac_cap)} (${(z.ac_cap/12000).toFixed(1)}T)</span></div>
+  </div>
+  <div class="rcard" style="margin-top:11px">
+    <div class="rc-label" style="margin-bottom:8px">Heating Loss Breakdown</div>
+    ${rows.map(([l,v])=>`<div class="brow"><span class="bl">${l}</span><span class="bv" style="color:${v<0?'var(--accent2)':'var(--text)'}">${v<0?'−':''}${fmt(Math.abs(v))} BTU/hr</span></div>`).join('')}
+  </div>
+  <div class="explainer" style="margin-top:13px"><strong>Note:</strong> Simplified Manual J estimate. A certified ACCA calculation is required for permit applications and before purchasing equipment.</div>`;
+}
+
+// ══════════════════════════════════════════
+// LIVE PANEL + PILL
+// ══════════════════════════════════════════
+function livePanelHTML(r,z){
+  const hR=z.furnace_cap/r.HEAT;
+  const vClass=hR<=1.35?'good':hR<=1.8?'warn':'over';
+  return `
+    <div class="rcard hl"><div class="rc-label">Heating Load</div><div class="rc-val">${fmt(r.HEAT)}</div><div class="rc-sub">BTU/hr · ${(r.HEAT/12000).toFixed(1)} tons</div></div>
+    <div class="rcard hl-cool"><div class="rc-label">Cooling Load</div><div class="rc-val cool">${fmt(r.COOL)}</div><div class="rc-sub">BTU/hr · ${(r.COOL/12000).toFixed(1)} tons</div></div>
+    <div class="rcard"><div class="rc-label">BTU / ft²</div><div class="rc-val" style="font-size:1.15rem;color:var(--text)">${Math.round(r.HEAT/Math.max(z.floor_area,1))}</div><div class="rc-sub">heating (target: 20–50)</div></div>
+    <div class="verdict ${vClass}">Furnace ratio: ${hR.toFixed(2)}× load</div>
+    <div class="rcard"><div class="rc-label" style="margin-bottom:7px">Loss Breakdown</div>
+      ${[['💨 Infiltration',r.bd.HInf],['🪟 Windows',r.bd.HWin],['🧱 Walls',r.bd.HW],['🏠 Ceiling',r.bd.HC]]
+        .map(([l,v])=>`<div class="brow"><span class="bl">${l}</span><span class="bv">${Math.round(v/r.HEAT*100)}%</span></div>`).join('')}
+    </div>`;
+}
+
+function updatePanel(){
+  const z=mode==='whole'?wholeZone:zones[currentZone];
+  const r=calcZone(z,climate);
+  const col=mode==='zones'?ZONE_COLORS[currentZone%ZONE_COLORS.length]:null;
+  // Desktop panel
+  document.getElementById('rpanelLabel').innerHTML=mode==='zones'?`<span style="color:${col}">●</span> ${z.name}`:'Live Estimate';
+  document.getElementById('rpanelContent').innerHTML=livePanelHTML(r,z);
+  // Mobile pill
+  document.getElementById('pillHeat').textContent=fmt(r.HEAT);
+  // Update open drawer if open
+  const drawer=document.getElementById('estDrawer');
+  if(drawer.classList.contains('open')){
+    document.getElementById('drawerBody').innerHTML=livePanelHTML(r,z);
+  }
+  renderMobileNav();
+  renderMobileStepBar();
+}
+
+// ══════════════════════════════════════════
+// HELPERS
+// ══════════════════════════════════════════
+function zset(pfx,key,val){
+  if(pfx==='wh')wholeZone[key]=val;
+  else zones[currentZone][key]=val;
+  updatePanel();
+}
+function applyPreset(v){
+  if(!v)return;
+  const [hd,hi,cd,ci,gr]=v.split(',').map(Number);
+  climate={heat_design:hd,heat_indoor:hi,cool_design:cd,cool_indoor:ci,grains:gr};
+  render();
+}
+function setPage(html){
+  const mc=document.getElementById('mainContent');
+  mc.innerHTML='';
+  const p=document.createElement('div');
+  p.className='page active';p.innerHTML=html;
+  mc.appendChild(p);
+}
+function goStep(n){
+  currentStep=n;render();
+  const scroll=document.getElementById('mainScroll');
+  scroll.scrollTo({top:0,behavior:'smooth'});
+}
+function switchZone(i){currentZone=i;render()}
+function addZone(){zones.push(mkZone(`Zone ${zones.length+1}`,400,300,200,1,40000,18000));currentZone=zones.length-1;render()}
+function removeZone(i){if(zones.length<=1)return;zones.splice(i,1);if(currentZone>=zones.length)currentZone=zones.length-1;render()}
+
+// Resize handler to re-render nav when crossing breakpoint
+let lastMobile=window.innerWidth<=1000;
+window.addEventListener('resize',()=>{
+  const isMobile=window.innerWidth<=1000;
+  if(isMobile!==lastMobile){lastMobile=isMobile;render();}
+  else{renderMobileNav();renderMobileStepBar();}
+});
+
+render();
+</script>
+</body>
+</html>

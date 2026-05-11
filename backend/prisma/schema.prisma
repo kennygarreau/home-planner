@@ -1,0 +1,83 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Settings {
+  id            Int      @id @default(1)
+  homeValue     Float    @default(0)
+  location      String   @default("")
+  updatedAt     DateTime @updatedAt
+}
+
+model Project {
+  id              String   @id @default(cuid())
+  name            String
+  category        String
+  status          String   @default("planned")
+  estimatedCost   Float    @default(0)
+  actualCost      Float    @default(0)
+  roiBenchmark    Float    @default(0)
+  scheduledStart  DateTime?
+  scheduledEnd    DateTime?
+  notes           String   @default("")
+  priority        String   @default("medium")
+  tasks           Task[]
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model BacklogItem {
+  id            String   @id @default(cuid())
+  name          String
+  category      String
+  estimatedCost Float    @default(0)
+  roiBenchmark  Float    @default(0)
+  priority      String   @default("medium")
+  notes         String   @default("")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model RoiBenchmark {
+  id          String  @id @default(cuid())
+  category    String  @unique
+  label       String
+  roiPercent  Float
+  avgCost     Float
+  notes       String  @default("")
+}
+
+model Task {
+  id            String   @id @default(cuid())
+  projectId     String
+  project       Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name          String
+  scheduledDate DateTime?
+  status        String   @default("pending")
+  notes         String   @default("")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model HomeValueSnapshot {
+  id        String   @id @default(cuid())
+  value     Float
+  note      String   @default("")
+  createdAt DateTime @default(now())
+}
+
+model ElecScenario {
+  id               Int      @id @default(1)
+  panelAmps        Int      @default(200)
+  sqft             Int      @default(0)
+  smallAppCircuits Int      @default(2)
+  laundry          Boolean  @default(true)
+  loads            Json     @default("[]")
+  subPanels        Json     @default("[]")
+  updatedAt        DateTime @updatedAt
+}
