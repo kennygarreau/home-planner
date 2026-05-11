@@ -276,3 +276,7 @@ docker compose up -d --build
 **Can't connect from other devices:**
 - Make sure port 3000 isn't blocked by firewall: `sudo ufw allow 3000`
 - Find your server IP: `ip addr show`
+
+**Overhead:**
+- RAM: ~68MB
+- CPU: negligible
