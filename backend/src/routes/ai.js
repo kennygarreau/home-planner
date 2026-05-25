@@ -49,7 +49,7 @@ module.exports = (prisma) => {
       if (err.message === 'Model returned unparseable output') {
         return res.status(422).json({ error: 'PARSE_FAILED', message: 'Vision model returned unparseable output. Try a clearer photo.' })
       }
-      console.error('Nameplate extraction error:', err.message)
+      console.error('Nameplate extraction error:', err.message, err.cause ?? err.stack)
       res.status(500).json({ error: 'Extraction failed', message: err.message })
     }
   })

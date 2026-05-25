@@ -56,6 +56,11 @@ export default function NameplateScanner({ entityType, entityId, label, onApply 
   // Load any existing saved nameplate for this entity on mount / entityId change
   useEffect(() => {
     if (!entityType || !entityId) return
+    // Reset to clean state immediately so previous zone's thumbnail doesn't bleed through
+    setSavedRecord(null)
+    setThumbUrl(null)
+    setExtracted(null)
+    setPhase('idle')
     let cancelled = false
     api.getNameplates(entityType, entityId)
       .then(records => {

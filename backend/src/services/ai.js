@@ -1,6 +1,6 @@
 const OpenAI = require('openai')
 
-const VISION_MODEL = process.env.AI_VISION_MODEL || 'qwen2-vl:7b'
+const VISION_MODEL = process.env.AI_VISION_MODEL || 'llama3.2-vision:11b'
 const TEXT_MODEL   = process.env.AI_TEXT_MODEL   || 'llama3.1:8b'
 
 function isEnabled() {
@@ -57,10 +57,8 @@ async function extractNameplate(base64Image, mimeType = 'image/jpeg') {
         { type: 'text', text: NAMEPLATE_PROMPT },
       ],
     }],
-    // response_format not universally supported across Ollama models — parse manually
     max_tokens: 512,
   })
-
   const raw = response.choices[0]?.message?.content || ''
   const parsed = parseJSON(raw)
 

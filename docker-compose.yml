@@ -28,7 +28,7 @@ services:
       AI_ENABLED: ${AI_ENABLED:-false}
       AI_BASE_URL: ${AI_BASE_URL:-}
       AI_API_KEY: ${AI_API_KEY:-unused}
-      AI_VISION_MODEL: ${AI_VISION_MODEL:-qwen2-vl:7b}
+      AI_VISION_MODEL: ${AI_VISION_MODEL:-llama3.2-vision:11b}
       AI_TEXT_MODEL: ${AI_TEXT_MODEL:-llama3.1:8b}
     # No host port: nginx proxies /api/ to backend:3001 over the internal network
     depends_on:
