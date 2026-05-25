@@ -24,6 +24,7 @@ app.use('/api/export', require('./routes/export')(prisma))
 app.use('/api/homevalue', require('./routes/homevalue')(prisma))
 app.use('/api/tasks', require('./routes/tasks')(prisma))
 app.use('/api/elec', require('./routes/elec')(prisma))
+app.use('/api/manualj', require('./routes/manualj')(prisma))
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }))
 

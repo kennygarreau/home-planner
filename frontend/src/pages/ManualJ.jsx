@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { api } from '../api'
 
 // ─────────────────────────────────────────────
 // CONSTANTS
@@ -553,7 +554,7 @@ function EquipmentStep({ zone, onChange, onBack, onNext }) {
   )
 }
 
-function SummaryStep({ zones, climate, onBack }) {
+function SummaryStep({ zones, climate, onBack, onPrint }) {
   const results = zones.map(z => ({ z, r: calcZone(z, climate) }))
   const tH    = results.reduce((s, { r }) => s + r.HEAT, 0)
   const tC    = results.reduce((s, { r }) => s + r.COOL, 0)
@@ -625,7 +626,7 @@ function SummaryStep({ zones, climate, onBack }) {
         <strong>Sizing note:</strong> Ratios above 1.5× indicate oversizing. Short cycling (5–10 min cycles) at mild temps
         is a classic signature. Ideal ratio: 1.0–1.35×.
       </Explainer>
-      <StepNav onBack={onBack} onNext={() => window.print()} nextLabel="🖨 Print All" />
+      <StepNav onBack={onBack} onNext={onPrint} nextLabel="🖨 Print All" />
     </div>
   )
 }
@@ -642,6 +643,9 @@ export default function ManualJ() {
   const [zones,       setZones]       = useState(DEFAULT_ZONES)
   const [drawerOpen,  setDrawerOpen]  = useState(false)
   const [menuOpen,    setMenuOpen]    = useState(false)
+  const [saveStatus,  setSaveStatus]  = useState('saved')
+  const initialized = useRef(false)
+  const saveTimer   = useRef(null)
 
   const activeZone = mode === 'whole' ? wholeZone : zones[currentZone]
   const setActiveZone = mode === 'whole'
@@ -664,6 +668,250 @@ export default function ManualJ() {
   }
   function renameZone(i, name) {
     setZones(zs => zs.map((z, idx) => idx === i ? { ...z, name } : z))
+  }
+
+  // Load saved state on mount
+  useEffect(() => {
+    api.getManualJ().then(data => {
+      if (data) {
+        if (data.mode) setMode(data.mode)
+        if (data.climate && Object.keys(data.climate).length) setClimate(data.climate)
+        if (data.wholeZone && Object.keys(data.wholeZone).length) setWholeZone(data.wholeZone)
+        if (Array.isArray(data.zones) && data.zones.length) setZones(data.zones)
+      }
+      setTimeout(() => { initialized.current = true }, 0)
+    }).catch(() => { initialized.current = true })
+  }, [])
+
+  // Auto-save on change
+  useEffect(() => {
+    if (!initialized.current) return
+    setSaveStatus('saving')
+    clearTimeout(saveTimer.current)
+    saveTimer.current = setTimeout(() => {
+      api.saveManualJ({ mode, climate, wholeZone, zones })
+        .then(() => setSaveStatus('saved'))
+        .catch(() => setSaveStatus('error'))
+    }, 800)
+  }, [mode, climate, wholeZone, zones])
+
+  function printManualJReport() {
+    const date = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+    const modeLabel = mode === 'whole' ? 'Whole-Home' : `Zone-by-Zone (${zones.length} zone${zones.length !== 1 ? 's' : ''})`
+
+    const doorLabel  = { solid_wood: 'Solid wood (R-2)', insulated: 'Insulated steel (R-5)', fiberglass: 'Insulated fiberglass (R-7)' }
+    const ventLabel  = { none: 'None / exhaust-only', balanced: 'Balanced HRV/ERV (75% recovery)' }
+    const dLocLabel  = { conditioned: 'Conditioned space', attic: 'Unconditioned attic', crawl: 'Vented crawlspace' }
+    const dLeakLabel = { tight: 'Well-sealed (<5%)', average: 'Typical (5–15%)', leaky: 'Leaky (>15%)' }
+    const ach50Map   = { tight: 2, average: 7, loose: 15, very_loose: 25 }
+
+    function infText(z) {
+      if (z.infiltration === 'custom') return `Custom (${z.custom_ach} ACH50)`
+      const labels = { tight: 'Tight', average: 'Average', loose: 'Loose', very_loose: 'Very loose' }
+      return `${labels[z.infiltration] || z.infiltration} (≈${ach50Map[z.infiltration]} ACH50)`
+    }
+    function sizeCls(r) { return r < 0.9 ? 'over' : r <= 1.35 ? 'good' : r <= 1.8 ? 'warn' : 'over' }
+    function sizeTxt(r) { return r < 0.9 ? 'Undersized' : r <= 1.35 ? 'Well-sized' : r <= 1.8 ? 'Slightly oversized' : 'Significantly oversized' }
+
+    function zoneInputs(z) {
+      return `
+        <table>
+          <thead><tr><th>Floor Area</th><th>Ceiling Ht</th><th>Wall Area</th><th>Ceiling Area</th><th>Floor/Uncond.</th><th>BG Wall</th></tr></thead>
+          <tbody><tr>
+            <td>${z.floor_area.toLocaleString()} ft²</td><td>${z.ceiling_height} ft</td>
+            <td>${z.wall_area.toLocaleString()} ft²</td><td>${z.ceiling_area.toLocaleString()} ft²</td>
+            <td>${z.floor_uncond > 0 ? z.floor_uncond + ' ft²' : '—'}</td>
+            <td>${z.bg_wall_area > 0 ? z.bg_wall_area + ' ft²' : '—'}</td>
+          </tr></tbody>
+        </table>
+        <table>
+          <thead><tr><th>Wall R</th><th>Ceiling R</th><th>Floor R</th><th>BG Wall R</th><th>Window U</th><th>Window Area</th><th>SHGC</th><th>South-Facing</th></tr></thead>
+          <tbody><tr>
+            <td>R-${z.r_wall}</td><td>R-${z.r_ceiling}</td><td>R-${z.r_floor}</td>
+            <td>${z.r_bg_wall > 0 ? 'R-' + z.r_bg_wall : '—'}</td>
+            <td>U-${z.window_u}</td><td>${z.window_area} ft²</td><td>${z.window_shgc}</td><td>${z.south_window} ft²</td>
+          </tr></tbody>
+        </table>
+        <table>
+          <thead><tr><th>Door Type</th><th>Door Area</th><th>Infiltration</th><th>Mech. Vent</th><th>Occupants</th><th>Lighting</th><th>Appliances</th></tr></thead>
+          <tbody><tr>
+            <td>${doorLabel[z.door_type] || z.door_type}</td><td>${z.door_area} ft²</td>
+            <td>${infText(z)}</td>
+            <td>${z.vent_cfm > 0 ? z.vent_cfm + ' CFM · ' + (ventLabel[z.ventilation] || z.ventilation) : '—'}</td>
+            <td>${z.occupants}</td><td>${z.lighting} W/ft²</td><td>${z.appliances.toLocaleString()} BTU/hr</td>
+          </tr></tbody>
+        </table>
+        <table>
+          <thead><tr><th>Furnace Installed</th><th>AC Installed</th><th>Duct Location</th><th>Duct Leakage</th></tr></thead>
+          <tbody><tr>
+            <td>${z.furnace_cap.toLocaleString()} BTU/hr</td>
+            <td>${z.ac_cap.toLocaleString()} BTU/hr (${(z.ac_cap / 12000).toFixed(1)} tons)</td>
+            <td>${dLocLabel[z.duct_location] || z.duct_location}</td>
+            <td>${dLeakLabel[z.duct_leakage] || z.duct_leakage}</td>
+          </tr></tbody>
+        </table>`
+    }
+
+    function zoneResults(z, r) {
+      const hR = z.furnace_cap / r.HEAT
+      const cR = z.ac_cap / r.COOL
+      const breakdown = [
+        ['Walls', r.bd.HW], ['Ceiling', r.bd.HC], ['Windows', r.bd.HWin], ['Doors', r.bd.HD],
+        ['Below-grade walls', r.bd.HBG], ['Floor over uncond.', r.bd.HF],
+        ['Infiltration', r.bd.HInf], ['Ventilation', r.bd.HVent],
+        ['Duct losses', r.bd.HDuct], ['Solar credit', -r.bd.solCredit],
+      ].filter(([, v]) => Math.abs(v) > 50)
+      return `
+        <div class="summary-grid">
+          <div class="summary-card">
+            <div class="label">Heating Load</div>
+            <div class="value" style="color:#b45309">${fmt(r.HEAT)}</div>
+            <div class="sub">BTU/hr · ${(r.HEAT / 12000).toFixed(1)} tons · ΔT ${r.hDT}°F</div>
+          </div>
+          <div class="summary-card">
+            <div class="label">Cooling Load</div>
+            <div class="value" style="color:#0d9488">${fmt(r.COOL)}</div>
+            <div class="sub">BTU/hr · ${(r.COOL / 12000).toFixed(1)} tons · SHR ${r.SHR}</div>
+          </div>
+          <div class="summary-card">
+            <div class="label">Heating Intensity</div>
+            <div class="value">${Math.round(r.HEAT / z.floor_area)}</div>
+            <div class="sub">BTU/hr·ft² (target 20–50)</div>
+          </div>
+          <div class="summary-card">
+            <div class="label">Floor Area</div>
+            <div class="value">${z.floor_area.toLocaleString()}</div>
+            <div class="sub">conditioned sq ft</div>
+          </div>
+        </div>
+        <table>
+          <thead><tr><th>Equipment</th><th>Calculated Load</th><th>Recommended</th><th>Installed</th><th>Ratio</th><th>Status</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>Furnace (heating)</td>
+              <td>${fmt(r.HEAT)} BTU/hr</td><td>${fmt(r.recH)} BTU/hr</td>
+              <td>${fmt(z.furnace_cap)} BTU/hr</td>
+              <td class="${sizeCls(hR)}">${hR.toFixed(2)}×</td>
+              <td class="${sizeCls(hR)}">${sizeTxt(hR)}</td>
+            </tr>
+            <tr>
+              <td>AC / Cooling</td>
+              <td>${fmt(r.COOL)} BTU/hr (${(r.COOL / 12000).toFixed(1)}T)</td>
+              <td>${fmt(r.recC)} BTU/hr (${(r.recC / 12000).toFixed(1)}T)</td>
+              <td>${fmt(z.ac_cap)} BTU/hr (${(z.ac_cap / 12000).toFixed(1)}T)</td>
+              <td class="${sizeCls(cR)}">${cR.toFixed(2)}×</td>
+              <td class="${sizeCls(cR)}">${sizeTxt(cR)}</td>
+            </tr>
+          </tbody>
+        </table>
+        <table>
+          <thead><tr><th>Heat Loss Component</th><th>BTU/hr</th><th>% of Load</th></tr></thead>
+          <tbody>
+            ${breakdown.map(([l, v]) => `<tr>
+              <td>${l}</td>
+              <td style="${v < 0 ? 'color:#16a34a' : ''}">${v < 0 ? '−' : ''}${fmt(Math.abs(v))}</td>
+              <td>${v < 0 ? '(credit)' : Math.round(Math.abs(v) / r.HEAT * 100) + '%'}</td>
+            </tr>`).join('')}
+            <tr style="background:#f0f0f0"><td><strong>Total Heating Load</strong></td><td><strong>${fmt(r.HEAT)} BTU/hr</strong></td><td><strong>100%</strong></td></tr>
+          </tbody>
+        </table>`
+    }
+
+    let summaryHtml = ''
+    if (mode === 'zones' && zones.length > 1) {
+      const results = zones.map(z => ({ z, r: calcZone(z, climate) }))
+      const tH = results.reduce((s, { r }) => s + r.HEAT, 0)
+      const tC = results.reduce((s, { r }) => s + r.COOL, 0)
+      const tFA = zones.reduce((s, z) => s + z.floor_area, 0)
+      summaryHtml = `
+        <h2>Zone Summary</h2>
+        <table>
+          <thead><tr><th>Zone</th><th>Area (ft²)</th><th>Heating Load</th><th>BTU/ft²</th><th>Cooling</th><th>Furnace (ratio)</th><th>AC</th></tr></thead>
+          <tbody>
+            ${results.map(({ z, r }) => {
+              const hR = z.furnace_cap / r.HEAT
+              return `<tr>
+                <td>${z.name}</td><td>${z.floor_area.toLocaleString()}</td>
+                <td>${fmt(r.HEAT)}</td><td>${Math.round(r.HEAT / z.floor_area)}</td>
+                <td>${(r.COOL / 12000).toFixed(1)}T</td>
+                <td class="${sizeCls(hR)}">${(z.furnace_cap / 1000).toFixed(0)}k (${hR.toFixed(2)}×)</td>
+                <td>${(z.ac_cap / 12000).toFixed(1)}T</td>
+              </tr>`
+            }).join('')}
+            <tr style="background:#f0f0f0;font-weight:bold">
+              <td>TOTAL</td><td>${tFA.toLocaleString()}</td>
+              <td>${fmt(tH)}</td><td>${Math.round(tH / tFA)}</td>
+              <td>${(tC / 12000).toFixed(1)}T</td><td colspan="2"></td>
+            </tr>
+          </tbody>
+        </table>`
+    }
+
+    const zonesList = mode === 'whole' ? [wholeZone] : zones
+    const bodyHtml = zonesList.map((z, i) => {
+      const r = calcZone(z, climate)
+      return `
+        ${mode === 'zones' ? `<div class="zone-header">${z.name}</div>` : ''}
+        <h2>Inputs</h2>${zoneInputs(z)}
+        <h2>Results</h2>${zoneResults(z, r)}`
+    }).join('')
+
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
+    <title>Manual J Load Calculation</title>
+    <style>
+      *{box-sizing:border-box;margin:0;padding:0}
+      body{font-family:Arial,sans-serif;font-size:12px;color:#111;padding:28px 36px;max-width:900px;margin:0 auto}
+      h1{font-size:18px;font-weight:bold;margin-bottom:2px}
+      .subtitle{font-size:11px;color:#555;margin-bottom:18px}
+      h2{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:#555;border-bottom:2px solid #111;padding-bottom:4px;margin:20px 0 10px}
+      table{width:100%;border-collapse:collapse;margin-bottom:10px}
+      th{background:#f0f0f0;text-align:left;padding:5px 8px;font-size:11px;text-transform:uppercase;letter-spacing:.05em;border:1px solid #ccc}
+      td{padding:5px 8px;border:1px solid #ddd;vertical-align:top}
+      tr:nth-child(even) td{background:#fafafa}
+      .summary-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px}
+      .summary-card{border:1px solid #ccc;border-radius:4px;padding:10px 12px}
+      .summary-card .label{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#777;margin-bottom:3px}
+      .summary-card .value{font-size:18px;font-weight:bold;margin-bottom:1px}
+      .summary-card .sub{font-size:10px;color:#777}
+      .good{color:#16a34a}.warn{color:#b45309}.over{color:#dc2626}
+      .zone-header{background:#f5f5f5;padding:8px 12px;margin:20px 0 8px;border-left:3px solid #555;font-weight:bold;font-size:13px}
+      .disclaimer{margin-top:24px;padding:10px 12px;border:1px solid #ccc;border-radius:4px;font-size:10px;color:#555;line-height:1.6}
+      .footer{margin-top:16px;font-size:10px;color:#999;border-top:1px solid #eee;padding-top:8px}
+      @media print{body{padding:16px 20px}@page{margin:.75in}.zone-header{page-break-before:always}}
+    </style>
+    </head><body>
+    <h1>ACCA Manual J Residential Load Calculation</h1>
+    <div class="subtitle">Prepared: ${date} &nbsp;|&nbsp; Method: ACCA Manual J (Simplified) &nbsp;|&nbsp; Mode: ${modeLabel}</div>
+
+    <h2>Climate &amp; Design Conditions</h2>
+    <table>
+      <thead><tr><th>Parameter</th><th>Heating Design</th><th>Cooling Design</th></tr></thead>
+      <tbody>
+        <tr><td>Outdoor Design Temperature</td><td>${climate.heat_design}°F</td><td>${climate.cool_design}°F</td></tr>
+        <tr><td>Indoor Setpoint</td><td>${climate.heat_indoor}°F</td><td>${climate.cool_indoor}°F</td></tr>
+        <tr><td>Design ΔT</td><td>${climate.heat_indoor - climate.heat_design}°F</td><td>${climate.cool_design - climate.cool_indoor}°F</td></tr>
+        <tr><td>Outdoor Humidity (gr/lb)</td><td>—</td><td>${climate.grains} gr/lb</td></tr>
+      </tbody>
+    </table>
+
+    ${summaryHtml}
+    ${bodyHtml}
+
+    <div class="disclaimer">
+      <strong>Planning Estimate Only.</strong> This is a simplified implementation of the ACCA Manual J residential load calculation method.
+      Results are suitable for planning and preliminary equipment sizing only. A certified Manual J calculation by a licensed HVAC contractor
+      or mechanical engineer is required before purchasing equipment, applying for permits, or installing HVAC systems.
+      Solar credit: south-facing glazing at 55 BTU/hr·ft²·SHGC×30% (heating) and 125 BTU/hr·ft²·SHGC×60% (cooling).
+      Duct loss multipliers per ACCA Manual J Table 7A. Infiltration via ACH50 ÷ 18 rule-of-thumb.
+    </div>
+    <div class="footer">Generated by Home Planner &nbsp;|&nbsp; ${date}</div>
+    </body></html>`
+
+    const w = window.open('', '_blank')
+    w.document.write(html)
+    w.document.close()
+    w.focus()
+    setTimeout(() => w.print(), 400)
   }
 
   const stepLabels = mode === 'whole' ? WH_STEPS : Z_STEPS
@@ -701,7 +949,7 @@ export default function ManualJ() {
       if (step === 4) return <InfiltrationStep zone={activeZone}  onChange={setActiveZone}  onBack={() => goStep(3)} onNext={() => goStep(5)} />
       if (step === 5) return <InternalsStep  zone={activeZone}    onChange={setActiveZone}  onBack={() => goStep(4)} onNext={() => goStep(6)} />
       if (step === 6) return <EquipmentStep  zone={activeZone}    onChange={setActiveZone}  onBack={() => goStep(5)} onNext={() => goStep(7)} />
-      if (step === 7) return <FullResults    zone={wholeZone}     climate={climate}         onBack={() => goStep(6)} onPrint={() => window.print()} />
+      if (step === 7) return <FullResults    zone={wholeZone}     climate={climate}         onBack={() => goStep(6)} onPrint={printManualJReport} />
     } else {
       if (step === 0) return (
         <>
@@ -715,7 +963,7 @@ export default function ManualJ() {
       if (step === 4) return <InternalsStep   zone={activeZone}  onChange={setActiveZone}  onBack={() => goStep(3)} onNext={() => goStep(5)} />
       if (step === 5) return <EquipmentStep   zone={activeZone}  onChange={setActiveZone}  onBack={() => goStep(4)} onNext={() => goStep(6)} />
       if (step === 6) return <FullResults     zone={activeZone}  climate={climate}         onBack={() => goStep(5)} onPrint={() => goStep(7)} />
-      if (step === 7) return <SummaryStep     zones={zones}      climate={climate}         onBack={() => goStep(6)} />
+      if (step === 7) return <SummaryStep     zones={zones}      climate={climate}         onBack={() => goStep(6)} onPrint={printManualJReport} />
     }
     return null
   }
@@ -729,8 +977,12 @@ export default function ManualJ() {
           <span className="font-display text-lg tracking-widest uppercase text-slate-100">Manual</span>
           <span className="font-display text-lg tracking-widest uppercase text-amber-400">J</span>
           <span className="font-mono text-[10px] bg-amber-500 text-slate-950 px-1.5 py-0.5 rounded font-semibold tracking-wider">MULTI-ZONE</span>
+          <span className={`text-[10px] font-mono hidden lg:inline ${saveStatus === 'saved' ? 'text-slate-600' : saveStatus === 'saving' ? 'text-amber-500' : 'text-red-400'}`}>
+            {saveStatus === 'saved' ? '● Saved' : saveStatus === 'saving' ? '● Saving…' : '● Save failed'}
+          </span>
         </div>
-        <div className="ml-auto flex items-center gap-1 bg-slate-800 border border-slate-700 rounded-lg p-0.5">
+        <button onClick={printManualJReport} className="btn-ghost text-xs py-1 px-3 hidden lg:block ml-auto">🖨 Print / PDF</button>
+        <div className="flex items-center gap-1 bg-slate-800 border border-slate-700 rounded-lg p-0.5">
           {(['whole', 'zones']).map(m => (
             <button key={m} onClick={() => switchMode(m)}
               className={`px-3 py-1.5 rounded-md text-xs font-mono transition-all ${
@@ -742,6 +994,7 @@ export default function ManualJ() {
           ))}
         </div>
       </div>
+
 
       {/* ── Desktop step progress bar ── */}
       <div className="hidden lg:flex items-center overflow-x-auto border-b border-slate-800 bg-slate-900/20 flex-shrink-0" style={{ scrollbarWidth: 'none' }}>

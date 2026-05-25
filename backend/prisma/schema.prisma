@@ -80,3 +80,12 @@ model ElecScenario {
   subPanels        Json     @default("[]")
   updatedAt        DateTime @updatedAt
 }
+
+model ManualJScenario {
+  id        Int      @id @default(1)
+  mode      String   @default("whole")
+  climate   Json     @default("{}")
+  wholeZone Json     @default("{}")
+  zones     Json     @default("[]")
+  updatedAt DateTime @updatedAt
+}

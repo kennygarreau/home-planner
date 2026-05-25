@@ -54,4 +54,8 @@ export const api = {
   // Electrical load calculator
   getElec: () => req('GET', '/elec'),
   saveElec: (data) => req('PUT', '/elec', data),
+
+  // Manual J load calculator
+  getManualJ: () => req('GET', '/manualj'),
+  saveManualJ: (data) => req('PUT', '/manualj', data),
 }
