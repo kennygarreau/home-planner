@@ -7,6 +7,7 @@ import CalendarPage from './pages/CalendarPage'
 import Settings from './pages/Settings'
 import Tools from './pages/Tools'
 import Electrical from './pages/Electrical'
+import ManualJ from './pages/ManualJ'
 
 export default function App() {
   return (
@@ -21,6 +22,7 @@ export default function App() {
           <Route path="settings" element={<Settings />} />
           <Route path="tools" element={<Tools />} />
           <Route path="electrical" element={<Electrical />} />
+          <Route path="manual-j" element={<ManualJ />} />
         </Route>
       </Routes>
     </BrowserRouter>

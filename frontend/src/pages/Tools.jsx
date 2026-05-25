@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ArrowLeft, Wind, Thermometer, PaintBucket, TrendingUp, Calculator } from 'lucide-react'
+import { ArrowLeft, Wind, PaintBucket, TrendingUp, Calculator } from 'lucide-react'
 
 // ─────────────────────────────────────────────
 // SHARED UI HELPERS
@@ -59,28 +59,7 @@ function InfoBox({ children, type = 'info' }) {
 }
 
 // ─────────────────────────────────────────────
-// 1. MANUAL J (iframe)
-// ─────────────────────────────────────────────
-function ManualJ() {
-  return (
-    <div className="flex flex-col h-full">
-      <p className="text-sm text-slate-500 mb-4">
-        ACCA Manual J residential load calculation — sizes heating and cooling equipment by calculating heat loss/gain through every surface of your home.
-      </p>
-      <div className="flex-1 rounded-xl overflow-hidden border border-slate-800" style={{ minHeight: '75vh' }}>
-        <iframe
-          src="/tools/manual-j.html"
-          className="w-full h-full"
-          style={{ minHeight: '75vh' }}
-          title="Manual J Load Calculator"
-        />
-      </div>
-    </div>
-  )
-}
-
-// ─────────────────────────────────────────────
-// 2. PAINT & MATERIAL CALCULATOR
+// PAINT & MATERIAL CALCULATOR
 // ─────────────────────────────────────────────
 function PaintCalc() {
   const [rooms, setRooms] = useState([{ id: 1, name: 'Living Room', length: '', width: '', height: '', doors: 1, windows: 2 }])
@@ -609,15 +588,6 @@ function BreakEven() {
 // TOOL REGISTRY
 // ─────────────────────────────────────────────
 const TOOLS = [
-  {
-    id: 'manualj',
-    label: 'Manual J',
-    icon: Thermometer,
-    desc: 'ACCA Manual J residential heat load calculation — right-size your HVAC equipment',
-    component: ManualJ,
-    color: 'text-orange-400',
-    bg: 'bg-orange-900/20 border-orange-800/30',
-  },
   {
     id: 'paint',
     label: 'Paint & Materials',
