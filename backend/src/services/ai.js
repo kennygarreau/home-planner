@@ -1,7 +1,7 @@
 const OpenAI = require('openai')
 
 const VISION_MODEL = process.env.AI_VISION_MODEL || 'llama3.2-vision:11b'
-const TEXT_MODEL   = process.env.AI_TEXT_MODEL   || 'llama3.1:8b'
+const TEXT_MODEL   = process.env.AI_TEXT_MODEL   || 'qwen3:30b-a3b'
 
 function isEnabled() {
   return process.env.AI_ENABLED === 'true' && !!process.env.AI_BASE_URL
@@ -24,6 +24,12 @@ function parseJSON(content) {
   return null
 }
 
+function normaliseCapacity(val) {
+  if (val == null) return null
+  const n = parseInt(String(val).replace(/[^0-9]/g, ''))
+  return isNaN(n) || n === 0 ? null : n
+}
+
 const NAMEPLATE_PROMPT = `You are reading an HVAC equipment nameplate photograph. Extract the information below and respond with ONLY valid JSON — no markdown, no explanation.
 
 {
@@ -44,6 +50,50 @@ Rules:
 - If the image is blurry, partial, or not an HVAC nameplate, return null for all numeric fields and explain in notes.
 - Return integers for capacity fields — no decimals, no units embedded in the value.`
 
+const LOOKUP_PROMPT = (modelNumber, manufacturer, unitType) =>
+  `/no_think
+You are an HVAC equipment specification database. Given the model number below, return capacity specs.
+
+Manufacturer: ${manufacturer || 'unknown'}
+Model Number: ${modelNumber}
+Equipment Type: ${unitType || 'unknown'}
+
+Respond with ONLY valid JSON — no markdown, no explanation, no preamble:
+
+{
+  "furnace_cap": <INPUT BTU/hr as integer, null if not a furnace/boiler or unknown>,
+  "ac_cap": <cooling BTU/hr as integer, null if not a cooling unit or unknown>,
+  "confidence": "high" | "medium" | "low",
+  "notes": "<how you determined the values, or why unknown>"
+}
+
+Rules:
+- furnace_cap: INPUT BTU/hr only. Return null for cooling-only units.
+- ac_cap: nominal BTU/hr. Decode tonnage from model digits if needed (e.g. 036=36000). Return null for heating-only units.
+- confidence: "high" if certain from known specs, "medium" if inferred from model number pattern, "low" if uncertain.
+- If you don't recognise this model, return null for both capacity fields.`
+
+// Best-effort lookup — never throws, returns null on any failure
+async function lookupCapacityByModel(modelNumber, manufacturer, unitType) {
+  if (!isEnabled() || !modelNumber) return null
+  try {
+    const client = getClient()
+    const response = await client.chat.completions.create({
+      model: TEXT_MODEL,
+      messages: [{ role: 'user', content: LOOKUP_PROMPT(modelNumber, manufacturer, unitType) }],
+      max_tokens: 256,
+    })
+    const raw = response.choices[0]?.message?.content || ''
+    const parsed = parseJSON(raw)
+    if (!parsed) return null
+    parsed.furnace_cap = normaliseCapacity(parsed.furnace_cap)
+    parsed.ac_cap      = normaliseCapacity(parsed.ac_cap)
+    return parsed
+  } catch {
+    return null
+  }
+}
+
 async function extractNameplate(base64Image, mimeType = 'image/jpeg') {
   if (!isEnabled()) throw new Error('AI_NOT_CONFIGURED')
 
@@ -61,15 +111,35 @@ async function extractNameplate(base64Image, mimeType = 'image/jpeg') {
   })
   const raw = response.choices[0]?.message?.content || ''
   const parsed = parseJSON(raw)
-
   if (!parsed) throw new Error('Model returned unparseable output')
 
-  // Normalise capacity fields — guard against strings like "80,000"
-  if (parsed.furnace_cap != null) {
-    parsed.furnace_cap = parseInt(String(parsed.furnace_cap).replace(/[^0-9]/g, '')) || null
-  }
-  if (parsed.ac_cap != null) {
-    parsed.ac_cap = parseInt(String(parsed.ac_cap).replace(/[^0-9]/g, '')) || null
+  parsed.furnace_cap = normaliseCapacity(parsed.furnace_cap)
+  parsed.ac_cap      = normaliseCapacity(parsed.ac_cap)
+
+  // If capacity is missing but we have a model number, try text lookup
+  const missingFurnace = !parsed.furnace_cap &&
+    ['furnace', 'boiler', 'heat_pump', 'unknown'].includes(parsed.type)
+  const missingAC = !parsed.ac_cap &&
+    ['ac', 'heat_pump', 'air_handler', 'unknown'].includes(parsed.type)
+
+  if (parsed.model_number && (missingFurnace || missingAC)) {
+    const lookup = await lookupCapacityByModel(parsed.model_number, parsed.manufacturer, parsed.type)
+    if (lookup) {
+      if (missingFurnace && lookup.furnace_cap) {
+        parsed.furnace_cap        = lookup.furnace_cap
+        parsed.furnace_cap_source = 'model_lookup'
+      }
+      if (missingAC && lookup.ac_cap) {
+        parsed.ac_cap        = lookup.ac_cap
+        parsed.ac_cap_source = 'model_lookup'
+      }
+      if (lookup.confidence) parsed.lookup_confidence = lookup.confidence
+      if (lookup.notes) {
+        parsed.notes = parsed.notes
+          ? `${parsed.notes} | Lookup: ${lookup.notes}`
+          : `Lookup (${lookup.confidence} confidence): ${lookup.notes}`
+      }
+    }
   }
 
   return { extracted: parsed, modelUsed: VISION_MODEL }

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Camera, RefreshCw, Check, X, AlertTriangle } from 'lucide-react'
+import { Camera, RefreshCw, Check, X, AlertTriangle, Search } from 'lucide-react'
 import { api } from '../api'
 
 // Resize + JPEG-compress an image File to a base64 string (no data: prefix)
@@ -45,18 +45,19 @@ function compressImage(file, maxDim = 800, quality = 0.80) {
 //   onApply     — callback({ furnace_cap?, ac_cap? }) — only present non-null values
 // ─────────────────────────────────────────────────────────
 export default function NameplateScanner({ entityType, entityId, label, onApply }) {
-  const [phase, setPhase]           = useState('idle')   // idle | scanning | confirming | error
-  const [extracted, setExtracted]   = useState(null)     // raw API response
-  const [edits, setEdits]           = useState({})       // user-editable extracted values
-  const [savedRecord, setSavedRecord] = useState(null)   // persisted DB record (meta only)
-  const [thumbUrl, setThumbUrl]     = useState(null)     // object URL for preview
-  const [errorMsg, setErrorMsg]     = useState('')
+  const [phase, setPhase]             = useState('idle')   // idle | scanning | confirming | error
+  const [scanMsg, setScanMsg]         = useState('')
+  const [extracted, setExtracted]     = useState(null)     // raw API response
+  const [edits, setEdits]             = useState({})       // user-editable extracted values
+  const [savedRecord, setSavedRecord] = useState(null)     // persisted DB record (meta only)
+  const [thumbUrl, setThumbUrl]       = useState(null)     // preview data URL
+  const [errorMsg, setErrorMsg]       = useState('')
   const inputRef = useRef(null)
 
   // Load any existing saved nameplate for this entity on mount / entityId change
   useEffect(() => {
     if (!entityType || !entityId) return
-    // Reset to clean state immediately so previous zone's thumbnail doesn't bleed through
+    // Reset immediately so previous zone's data doesn't bleed through
     setSavedRecord(null)
     setThumbUrl(null)
     setExtracted(null)
@@ -80,6 +81,7 @@ export default function NameplateScanner({ entityType, entityId, label, onApply 
     if (!file) return
     e.target.value = ''
     setPhase('scanning')
+    setScanMsg(`Reading ${label} nameplate…`)
     setErrorMsg('')
 
     let base64
@@ -91,12 +93,16 @@ export default function NameplateScanner({ entityType, entityId, label, onApply 
       return
     }
 
-    // Show local preview immediately while the API call runs
-    const localUrl = `data:image/jpeg;base64,${base64}`
-    setThumbUrl(localUrl)
+    setThumbUrl(`data:image/jpeg;base64,${base64}`)
 
     try {
       const result = await api.extractNameplate({ entityType, entityId, imageData: base64, mimeType: 'image/jpeg' })
+
+      // If the backend performed a model lookup, reflect that in the spinner message briefly
+      const didLookup = result.extracted?.furnace_cap_source === 'model_lookup' ||
+                        result.extracted?.ac_cap_source      === 'model_lookup'
+      if (didLookup) setScanMsg('Looked up model specs…')
+
       setExtracted(result)
       setSavedRecord(result.record)
       setEdits({
@@ -124,7 +130,6 @@ export default function NameplateScanner({ entityType, entityId, label, onApply 
     if (!isNaN(fc) && fc > 0) values.furnace_cap = fc
     if (!isNaN(ac) && ac > 0) values.ac_cap = ac
 
-    // If user corrected values, persist the correction back to the DB
     if (savedRecord?.id && Object.keys(values).length) {
       const updated = { ...(extracted?.extracted || {}), ...values }
       api.updateNameplate(savedRecord.id, updated).catch(() => {})
@@ -144,46 +149,97 @@ export default function NameplateScanner({ entityType, entityId, label, onApply 
     setPhase('idle')
   }
 
-  const ext = extracted?.extracted
+  const ext    = extracted?.extracted
+  // Use saved extractedData for the idle info card (survives page reload)
+  const stored = savedRecord?.extractedData
 
   return (
     <div>
-      {/* ── Idle: scan button + thumbnail ── */}
+      {/* ── Idle ── */}
       {phase === 'idle' && (
-        <div className="flex items-center gap-2 mt-1.5">
-          <button
-            type="button"
-            onClick={() => inputRef.current?.click()}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-dashed border-slate-600 text-slate-400 hover:text-amber-400 hover:border-amber-600/50 text-xs transition-all"
-          >
-            <Camera size={12} />
-            {thumbUrl ? `Re-scan ${label}` : `Scan ${label} nameplate`}
-          </button>
-          {thumbUrl && (
-            <div className="relative group shrink-0">
-              <img
-                src={thumbUrl}
-                alt={`${label} nameplate`}
-                className="h-9 w-16 object-cover rounded border border-slate-700 cursor-pointer"
-                onClick={() => setPhase('confirming')}
-                title="Click to review"
-              />
-              <button
-                type="button"
-                onClick={handleDelete}
-                className="absolute -top-1.5 -right-1.5 hidden group-hover:flex w-4 h-4 rounded-full bg-red-600 text-white items-center justify-center text-[10px] leading-none"
-                title="Remove"
-              >✕</button>
+        <div className="mt-1.5 space-y-2">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => inputRef.current?.click()}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-dashed border-slate-600 text-slate-400 hover:text-amber-400 hover:border-amber-600/50 text-xs transition-all"
+            >
+              <Camera size={12} />
+              {thumbUrl ? `Re-scan ${label}` : `Scan ${label} nameplate`}
+            </button>
+            {thumbUrl && (
+              <div className="relative group shrink-0">
+                <img
+                  src={thumbUrl}
+                  alt={`${label} nameplate`}
+                  className="h-9 w-16 object-cover rounded border border-slate-700 cursor-pointer"
+                  onClick={() => setPhase('confirming')}
+                  title="Click to review"
+                />
+                <button
+                  type="button"
+                  onClick={handleDelete}
+                  className="absolute -top-1.5 -right-1.5 hidden group-hover:flex w-4 h-4 rounded-full bg-red-600 text-white items-center justify-center text-[10px] leading-none"
+                  title="Remove"
+                >✕</button>
+              </div>
+            )}
+          </div>
+
+          {/* Stored unit info card */}
+          {stored && (
+            <div className="bg-slate-800/40 border border-slate-700/40 rounded-lg px-3 py-2 space-y-1">
+              {(stored.manufacturer || stored.model_number) && (
+                <div className="flex items-baseline gap-2 flex-wrap">
+                  {stored.manufacturer && (
+                    <span className="text-xs font-medium text-slate-200">{stored.manufacturer}</span>
+                  )}
+                  {stored.model_number && (
+                    <span className="text-xs font-mono text-slate-400">{stored.model_number}</span>
+                  )}
+                </div>
+              )}
+              <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+                {stored.serial_number && (
+                  <span className="text-[10px] font-mono text-slate-500">S/N: {stored.serial_number}</span>
+                )}
+                {stored.efficiency && (
+                  <span className="text-[10px] text-slate-500">{stored.efficiency}</span>
+                )}
+                {stored.voltage && (
+                  <span className="text-[10px] font-mono text-slate-500">{stored.voltage}</span>
+                )}
+              </div>
+              {(stored.furnace_cap || stored.ac_cap) && (
+                <div className="flex flex-wrap gap-x-3 gap-y-0.5 pt-0.5">
+                  {stored.furnace_cap && (
+                    <span className="text-[10px] text-slate-400">
+                      {stored.furnace_cap.toLocaleString()} BTU input
+                      {stored.furnace_cap_source === 'model_lookup' && (
+                        <span className="ml-1 text-amber-500/70" title="Value from model lookup">⚡ lookup</span>
+                      )}
+                    </span>
+                  )}
+                  {stored.ac_cap && (
+                    <span className="text-[10px] text-slate-400">
+                      {stored.ac_cap.toLocaleString()} BTU cooling
+                      {stored.ac_cap_source === 'model_lookup' && (
+                        <span className="ml-1 text-amber-500/70" title="Value from model lookup">⚡ lookup</span>
+                      )}
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>
       )}
 
-      {/* ── Scanning: spinner ── */}
+      {/* ── Scanning ── */}
       {phase === 'scanning' && (
         <div className="flex items-center gap-2 mt-1.5 text-xs text-amber-400">
           <RefreshCw size={12} className="animate-spin shrink-0" />
-          Reading {label} nameplate…
+          {scanMsg}
         </div>
       )}
 
@@ -198,10 +254,10 @@ export default function NameplateScanner({ entityType, entityId, label, onApply 
         </div>
       )}
 
-      {/* ── Confirming: review card ── */}
-      {(phase === 'confirming' || (phase === 'idle' && false)) && ext !== undefined && (
+      {/* ── Confirming ── */}
+      {phase === 'confirming' && ext !== undefined && (
         <div className="mt-2 bg-slate-800/60 border border-amber-700/30 rounded-xl p-3 space-y-3">
-          {/* Header row: thumbnail + identifiers */}
+          {/* Header: thumbnail + identifiers */}
           <div className="flex items-start gap-3">
             {thumbUrl && (
               <img
@@ -229,14 +285,21 @@ export default function NameplateScanner({ entityType, entityId, label, onApply 
             </div>
           </div>
 
-          {/* Editable capacity fields */}
+          {/* Editable capacity fields with source badges */}
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="text-[10px] font-mono uppercase tracking-wider text-slate-500">
-                Furnace Input BTU/hr
-              </label>
+              <div className="flex items-center gap-1.5 mb-0.5">
+                <label className="text-[10px] font-mono uppercase tracking-wider text-slate-500">
+                  Furnace Input BTU/hr
+                </label>
+                {ext?.furnace_cap_source === 'model_lookup' && (
+                  <span className="flex items-center gap-0.5 text-[9px] text-amber-500/80 bg-amber-950/30 px-1 py-0.5 rounded">
+                    <Search size={8} /> lookup
+                  </span>
+                )}
+              </div>
               <input
-                className="input mt-0.5 text-xs font-mono"
+                className="input text-xs font-mono"
                 type="number"
                 min="0"
                 step="1000"
@@ -246,11 +309,18 @@ export default function NameplateScanner({ entityType, entityId, label, onApply 
               />
             </div>
             <div>
-              <label className="text-[10px] font-mono uppercase tracking-wider text-slate-500">
-                AC Capacity BTU/hr
-              </label>
+              <div className="flex items-center gap-1.5 mb-0.5">
+                <label className="text-[10px] font-mono uppercase tracking-wider text-slate-500">
+                  AC Capacity BTU/hr
+                </label>
+                {ext?.ac_cap_source === 'model_lookup' && (
+                  <span className="flex items-center gap-0.5 text-[9px] text-amber-500/80 bg-amber-950/30 px-1 py-0.5 rounded">
+                    <Search size={8} /> lookup
+                  </span>
+                )}
+              </div>
               <input
-                className="input mt-0.5 text-xs font-mono"
+                className="input text-xs font-mono"
                 type="number"
                 min="0"
                 step="6000"
@@ -261,7 +331,7 @@ export default function NameplateScanner({ entityType, entityId, label, onApply 
             </div>
           </div>
 
-          {/* Notes / warnings from model */}
+          {/* Notes / warnings */}
           {ext?.notes && (
             <div className="flex items-start gap-1.5 text-xs text-amber-400/80 bg-amber-950/20 rounded-lg px-2.5 py-2">
               <AlertTriangle size={11} className="mt-0.5 shrink-0" />
