@@ -7,8 +7,8 @@ import NameplateScanner from '../components/NameplateScanner'
 // ─────────────────────────────────────────────
 const ZONE_COLORS = ['#7c9ef5','#4fc3a1','#e8a020','#e05252','#b07cda','#f07c4a','#5cc8e8','#e87cb8']
 
-const WH_STEPS = ['Overview','Climate','Envelope','Windows','Infiltration','Internals','Equipment','Results']
-const Z_STEPS  = ['Climate','Envelope','Windows','Infiltration','Internals','Equipment','Zone Results']
+const WH_STEPS = ['Overview','Climate','Equipment','Envelope','Windows','Infiltration','Internals','Results']
+const Z_STEPS  = ['Climate','Equipment','Envelope','Windows','Infiltration','Internals','Zone Results']
 
 const CITY_PRESETS = [
   ['Boston MA',       [9,  70, 91,  75, 65]],
@@ -322,6 +322,10 @@ function LandingStep({ onStart }) {
 
 function ClimateStep({ climate, onChange, onBack, onNext }) {
   const set = (k, v) => onChange({ ...climate, [k]: v })
+  const presetValue = CITY_PRESETS.find(([, v]) =>
+    v[0] === climate.heat_design && v[1] === climate.heat_indoor &&
+    v[2] === climate.cool_design && v[3] === climate.cool_indoor && v[4] === climate.grains
+  )?.[1].join(',') ?? ''
   return (
     <div className="space-y-4 max-w-2xl">
       <Explainer>
@@ -330,7 +334,7 @@ function ClimateStep({ climate, onChange, onBack, onNext }) {
       </Explainer>
       <FGrid>
         <Field label="City Preset">
-          <select className="input" defaultValue="" onChange={e => {
+          <select className="input" value={presetValue} onChange={e => {
             if (!e.target.value) return
             const [hd, hi, cd, ci, gr] = e.target.value.split(',').map(Number)
             onChange({ heat_design: hd, heat_indoor: hi, cool_design: cd, cool_indoor: ci, grains: gr })
@@ -355,7 +359,7 @@ function ClimateStep({ climate, onChange, onBack, onNext }) {
           <input className="input" type="number" value={climate.cool_indoor} onChange={e => set('cool_indoor', +e.target.value)} />
         </Field>
       </FGrid>
-      <StepNav onBack={onBack} onNext={onNext} nextLabel="Next: Envelope →" />
+      <StepNav onBack={onBack} onNext={onNext} nextLabel="Next: Equipment →" />
     </div>
   )
 }
@@ -515,7 +519,7 @@ function InternalsStep({ zone, onChange, onBack, onNext }) {
           <input className="input" type="number" value={zone.appliances} onChange={e => set('appliances', +e.target.value)} />
         </Field>
       </FGrid>
-      <StepNav onBack={onBack} onNext={onNext} nextLabel="Next: Equipment →" />
+      <StepNav onBack={onBack} onNext={onNext} nextLabel="Calculate Results →" />
     </div>
   )
 }
@@ -566,7 +570,7 @@ function EquipmentStep({ zone, onChange, onBack, onNext, entityId }) {
           </select>
         </Field>
       </FGrid>
-      <StepNav onBack={onBack} onNext={onNext} nextLabel="Calculate Results →" />
+      <StepNav onBack={onBack} onNext={onNext} nextLabel="Next: Envelope →" />
     </div>
   )
 }
@@ -654,6 +658,7 @@ function SummaryStep({ zones, climate, onBack, onPrint }) {
 export default function ManualJ() {
   const [mode,        setMode]        = useState('whole')
   const [step,        setStep]        = useState(0)
+  const [highWater,   setHighWater]   = useState(0)
   const [currentZone, setCurrentZone] = useState(0)
   const [climate,     setClimate]     = useState(DEFAULT_CLIMATE)
   const [wholeZone,   setWholeZone]   = useState(DEFAULT_WHOLE)
@@ -669,9 +674,9 @@ export default function ManualJ() {
     ? z => setWholeZone(z)
     : z => setZones(zs => zs.map((old, i) => i === currentZone ? z : old))
 
-  function goStep(n) { setStep(n); setMenuOpen(false) }
+  function goStep(n) { setStep(n); setHighWater(h => Math.max(h, n)); setMenuOpen(false) }
 
-  function switchMode(m) { setMode(m); setStep(0) }
+  function switchMode(m) { setMode(m); setStep(0); setHighWater(0) }
 
   function addZone() {
     const n = zones.length
@@ -938,20 +943,20 @@ export default function ManualJ() {
   const WH_META = [
     null,
     { tag: 'Step 01', title: 'Climate & Design',  desc: 'Your local outdoor conditions. Boston defaults pre-filled.' },
-    { tag: 'Step 02', title: 'Building Envelope',  desc: 'Every surface separating conditioned space from outside.' },
-    { tag: 'Step 03', title: 'Windows & Doors',    desc: 'Often 25–40% of total heat loss. Glazing type and area matter most.' },
-    { tag: 'Step 04', title: 'Infiltration',        desc: 'Uncontrolled air leakage is often 20–40% of heating load.' },
-    { tag: 'Step 05', title: 'Internal Gains',      desc: 'People, lights, and appliances generate heat — mainly affects cooling load.' },
-    { tag: 'Step 06', title: 'Your Equipment',      desc: 'Enter installed capacity so we can compare against calculated load.' },
+    { tag: 'Step 02', title: 'Your Equipment',     desc: 'Enter installed capacity so we can compare against calculated load.' },
+    { tag: 'Step 03', title: 'Building Envelope',  desc: 'Every surface separating conditioned space from outside.' },
+    { tag: 'Step 04', title: 'Windows & Doors',    desc: 'Often 25–40% of total heat loss. Glazing type and area matter most.' },
+    { tag: 'Step 05', title: 'Infiltration',        desc: 'Uncontrolled air leakage is often 20–40% of heating load.' },
+    { tag: 'Step 06', title: 'Internal Gains',      desc: 'People, lights, and appliances generate heat — mainly affects cooling load.' },
     { tag: 'Results',  title: 'Whole-Home Load',    desc: 'Complete heating and cooling load with equipment comparison.' },
   ]
   const Z_META = [
     { tag: 'Step 01', title: 'Climate & Design',  desc: 'Shared across all zones — your local outdoor conditions.' },
-    { tag: 'Step 02', title: 'Building Envelope',  desc: 'Envelope areas specific to this zone only.' },
-    { tag: 'Step 03', title: 'Windows & Doors',    desc: 'Windows and doors in this zone only.' },
-    { tag: 'Step 04', title: 'Infiltration',        desc: 'Air leakage for this zone.' },
-    { tag: 'Step 05', title: 'Internal Gains',      desc: 'Occupants, lighting, and appliances in this zone.' },
-    { tag: 'Step 06', title: 'Equipment',           desc: 'The furnace and AC unit serving this zone.' },
+    { tag: 'Step 02', title: 'Equipment',          desc: 'The furnace and AC unit serving this zone.' },
+    { tag: 'Step 03', title: 'Building Envelope',  desc: 'Envelope areas specific to this zone only.' },
+    { tag: 'Step 04', title: 'Windows & Doors',    desc: 'Windows and doors in this zone only.' },
+    { tag: 'Step 05', title: 'Infiltration',        desc: 'Air leakage for this zone.' },
+    { tag: 'Step 06', title: 'Internal Gains',      desc: 'Occupants, lighting, and appliances in this zone.' },
     { tag: 'Results',  title: 'Zone Results',       desc: 'Calculated load for this zone.' },
     { tag: 'Summary',  title: 'All Zones',          desc: 'Individual loads per zone and combined whole-home demand.' },
   ]
@@ -960,13 +965,13 @@ export default function ManualJ() {
   function renderStep() {
     if (mode === 'whole') {
       if (step === 0) return <LandingStep onStart={() => goStep(1)} />
-      if (step === 1) return <ClimateStep    climate={climate}    onChange={setClimate}     onBack={() => goStep(0)} onNext={() => goStep(2)} />
-      if (step === 2) return <EnvelopeStep   zone={activeZone}    onChange={setActiveZone}  onBack={() => goStep(1)} onNext={() => goStep(3)} />
-      if (step === 3) return <WindowsStep    zone={activeZone}    onChange={setActiveZone}  onBack={() => goStep(2)} onNext={() => goStep(4)} />
-      if (step === 4) return <InfiltrationStep zone={activeZone}  onChange={setActiveZone}  onBack={() => goStep(3)} onNext={() => goStep(5)} />
-      if (step === 5) return <InternalsStep  zone={activeZone}    onChange={setActiveZone}  onBack={() => goStep(4)} onNext={() => goStep(6)} />
-      if (step === 6) return <EquipmentStep  zone={activeZone}    onChange={setActiveZone}  onBack={() => goStep(5)} onNext={() => goStep(7)} entityId="manualj-whole" />
-      if (step === 7) return <FullResults    zone={wholeZone}     climate={climate}         onBack={() => goStep(6)} onPrint={printManualJReport} />
+      if (step === 1) return <ClimateStep      climate={climate}    onChange={setClimate}     onBack={() => goStep(0)} onNext={() => goStep(2)} />
+      if (step === 2) return <EquipmentStep   zone={activeZone}    onChange={setActiveZone}  onBack={() => goStep(1)} onNext={() => goStep(3)} entityId="manualj-whole" />
+      if (step === 3) return <EnvelopeStep    zone={activeZone}    onChange={setActiveZone}  onBack={() => goStep(2)} onNext={() => goStep(4)} />
+      if (step === 4) return <WindowsStep     zone={activeZone}    onChange={setActiveZone}  onBack={() => goStep(3)} onNext={() => goStep(5)} />
+      if (step === 5) return <InfiltrationStep zone={activeZone}  onChange={setActiveZone}  onBack={() => goStep(4)} onNext={() => goStep(6)} />
+      if (step === 6) return <InternalsStep   zone={activeZone}    onChange={setActiveZone}  onBack={() => goStep(5)} onNext={() => goStep(7)} />
+      if (step === 7) return <FullResults     zone={wholeZone}     climate={climate}         onBack={() => goStep(6)} onPrint={printManualJReport} />
     } else {
       if (step === 0) return (
         <>
@@ -974,11 +979,11 @@ export default function ManualJ() {
           <ClimateStep climate={climate} onChange={setClimate} onBack={null} onNext={() => goStep(1)} />
         </>
       )
-      if (step === 1) return <EnvelopeStep    zone={activeZone}  onChange={setActiveZone}  onBack={() => goStep(0)} onNext={() => goStep(2)} />
-      if (step === 2) return <WindowsStep     zone={activeZone}  onChange={setActiveZone}  onBack={() => goStep(1)} onNext={() => goStep(3)} />
-      if (step === 3) return <InfiltrationStep zone={activeZone} onChange={setActiveZone}  onBack={() => goStep(2)} onNext={() => goStep(4)} />
-      if (step === 4) return <InternalsStep   zone={activeZone}  onChange={setActiveZone}  onBack={() => goStep(3)} onNext={() => goStep(5)} />
-      if (step === 5) return <EquipmentStep   zone={activeZone}  onChange={setActiveZone}  onBack={() => goStep(4)} onNext={() => goStep(6)} entityId={`manualj-zone-${currentZone}`} />
+      if (step === 1) return <EquipmentStep    zone={activeZone}  onChange={setActiveZone}  onBack={() => goStep(0)} onNext={() => goStep(2)} entityId={`manualj-zone-${currentZone}`} />
+      if (step === 2) return <EnvelopeStep    zone={activeZone}  onChange={setActiveZone}  onBack={() => goStep(1)} onNext={() => goStep(3)} />
+      if (step === 3) return <WindowsStep     zone={activeZone}  onChange={setActiveZone}  onBack={() => goStep(2)} onNext={() => goStep(4)} />
+      if (step === 4) return <InfiltrationStep zone={activeZone} onChange={setActiveZone}  onBack={() => goStep(3)} onNext={() => goStep(5)} />
+      if (step === 5) return <InternalsStep   zone={activeZone}  onChange={setActiveZone}  onBack={() => goStep(4)} onNext={() => goStep(6)} />
       if (step === 6) return <FullResults     zone={activeZone}  climate={climate}         onBack={() => goStep(5)} onPrint={() => goStep(7)} />
       if (step === 7) return <SummaryStep     zones={zones}      climate={climate}         onBack={() => goStep(6)} onPrint={printManualJReport} />
     }
@@ -1015,18 +1020,26 @@ export default function ManualJ() {
 
       {/* ── Desktop step progress bar ── */}
       <div className="hidden lg:flex items-center overflow-x-auto border-b border-slate-800 bg-slate-900/20 flex-shrink-0" style={{ scrollbarWidth: 'none' }}>
-        {stepLabels.map((label, i) => (
-          <button key={i} onClick={() => goStep(i)}
-            className={`flex items-center gap-2 px-4 py-2.5 text-xs border-b-2 transition-all whitespace-nowrap flex-shrink-0 ${
-              i === step
-                ? 'border-amber-500 text-amber-400 bg-amber-500/5'
-                : 'border-transparent text-slate-500 hover:text-slate-300 hover:bg-slate-800/50'
-            }`}
-          >
-            <span className="font-mono text-slate-700 text-[10px] w-4 text-right">{String(i + (mode === 'zones' ? 1 : 0)).padStart(2, '0')}</span>
-            {label}
-          </button>
-        ))}
+        {stepLabels.map((label, i) => {
+          const isActive    = i === step
+          const isCompleted = i < highWater && i !== step
+          return (
+            <button key={i} onClick={() => goStep(i)}
+              className={`flex items-center gap-2 px-4 py-2.5 text-xs border-b-2 transition-all whitespace-nowrap flex-shrink-0 ${
+                isActive
+                  ? 'border-amber-500 text-amber-400 bg-amber-500/5'
+                  : isCompleted
+                  ? 'border-emerald-700 text-emerald-500 hover:text-emerald-400 hover:bg-emerald-900/20'
+                  : 'border-transparent text-slate-500 hover:text-slate-300 hover:bg-slate-800/50'
+              }`}
+            >
+              <span className={`font-mono text-[10px] w-4 text-right ${isCompleted ? 'text-emerald-700' : 'text-slate-700'}`}>
+                {isCompleted ? '✓' : String(i + (mode === 'zones' ? 1 : 0)).padStart(2, '0')}
+              </span>
+              {label}
+            </button>
+          )
+        })}
         {mode === 'zones' && (
           <button onClick={() => goStep(7)}
             className={`flex items-center gap-2 px-4 py-2.5 text-xs border-b-2 transition-all whitespace-nowrap flex-shrink-0 ${
@@ -1152,18 +1165,24 @@ export default function ManualJ() {
               <button className="text-slate-500 hover:text-slate-300 text-sm" onClick={() => setMenuOpen(false)}>Close</button>
             </div>
             <div className="p-3 space-y-0.5">
-              {stepLabels.map((label, i) => (
-                <button key={i} onClick={() => goStep(i)}
-                  className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-xs text-left transition-all ${
-                    i === step ? 'bg-amber-500/10 text-amber-400' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
-                  }`}
-                >
-                  <span className="font-mono text-slate-600 w-5 text-right shrink-0">
-                    {String(i + (mode === 'zones' ? 1 : 0)).padStart(2, '0')}
-                  </span>
-                  {label}
-                </button>
-              ))}
+              {stepLabels.map((label, i) => {
+                const isActive    = i === step
+                const isCompleted = i < highWater && i !== step
+                return (
+                  <button key={i} onClick={() => goStep(i)}
+                    className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-xs text-left transition-all ${
+                      isActive    ? 'bg-amber-500/10 text-amber-400'
+                      : isCompleted ? 'bg-emerald-900/20 text-emerald-500 hover:bg-emerald-900/30'
+                      : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
+                    }`}
+                  >
+                    <span className={`font-mono w-5 text-right shrink-0 ${isCompleted ? 'text-emerald-700' : 'text-slate-600'}`}>
+                      {isCompleted ? '✓' : String(i + (mode === 'zones' ? 1 : 0)).padStart(2, '0')}
+                    </span>
+                    {label}
+                  </button>
+                )
+              })}
               {mode === 'zones' && (
                 <button onClick={() => goStep(7)}
                   className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-xs text-left transition-all ${
