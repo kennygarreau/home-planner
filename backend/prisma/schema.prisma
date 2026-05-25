@@ -84,12 +84,14 @@ model ElecScenario {
 }
 
 model ManualJScenario {
-  id        Int      @id @default(1)
-  mode      String   @default("whole")
-  climate   Json     @default("{}")
-  wholeZone Json     @default("{}")
-  zones     Json     @default("[]")
-  updatedAt DateTime @updatedAt
+  id          Int      @id @default(1)
+  mode        String   @default("whole")
+  climate     Json     @default("{}")
+  wholeZone   Json     @default("{}")
+  zones       Json     @default("[]")
+  step        Int      @default(0)
+  currentZone Int      @default(0)
+  updatedAt   DateTime @updatedAt
 }
 
 model NameplateImage {

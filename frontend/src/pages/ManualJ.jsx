@@ -700,6 +700,8 @@ export default function ManualJ() {
         if (data.climate && Object.keys(data.climate).length) setClimate(data.climate)
         if (data.wholeZone && Object.keys(data.wholeZone).length) setWholeZone(data.wholeZone)
         if (Array.isArray(data.zones) && data.zones.length) setZones(data.zones)
+        if (data.step > 0) { setStep(data.step); setHighWater(data.step) }
+        if (data.currentZone >= 0) setCurrentZone(data.currentZone)
       }
       setTimeout(() => { initialized.current = true }, 0)
     }).catch(() => { initialized.current = true })
@@ -711,11 +713,11 @@ export default function ManualJ() {
     setSaveStatus('saving')
     clearTimeout(saveTimer.current)
     saveTimer.current = setTimeout(() => {
-      api.saveManualJ({ mode, climate, wholeZone, zones })
+      api.saveManualJ({ mode, climate, wholeZone, zones, step, currentZone })
         .then(() => setSaveStatus('saved'))
         .catch(() => setSaveStatus('error'))
     }, 800)
-  }, [mode, climate, wholeZone, zones])
+  }, [mode, climate, wholeZone, zones, step, currentZone])
 
   function printManualJReport() {
     const date = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })

@@ -14,11 +14,11 @@ module.exports = (prisma) => {
 
   router.put('/', async (req, res) => {
     try {
-      const { mode, climate, wholeZone, zones } = req.body
+      const { mode, climate, wholeZone, zones, step, currentZone } = req.body
       if (!climate || !wholeZone || !Array.isArray(zones)) {
         return res.status(400).json({ error: 'Invalid payload' })
       }
-      const data = { mode: mode || 'whole', climate, wholeZone, zones }
+      const data = { mode: mode || 'whole', climate, wholeZone, zones, step: step ?? 0, currentZone: currentZone ?? 0 }
       const scenario = await prisma.manualJScenario.upsert({
         where: { id: 1 },
         update: data,

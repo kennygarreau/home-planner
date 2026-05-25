@@ -1,0 +1,2 @@
+ALTER TABLE "ManualJScenario" ADD COLUMN "step"         INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE "ManualJScenario" ADD COLUMN "currentZone"  INTEGER NOT NULL DEFAULT 0;
