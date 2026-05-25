@@ -13,7 +13,7 @@ const allowedOrigins = process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split('
 app.use(cors({
   origin: allowedOrigins.length > 0 ? allowedOrigins : false,
 }))
-app.use(express.json())
+app.use(express.json({ limit: '10mb' }))
 
 // Routes
 app.use('/api/settings', require('./routes/settings')(prisma))

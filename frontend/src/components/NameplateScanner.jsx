@@ -4,7 +4,7 @@ import { api } from '../api'
 
 // Resize + JPEG-compress an image File to a base64 string (no data: prefix)
 // Uses FileReader → data URL so it works on iOS/Android without HEIC issues.
-function compressImage(file, maxDim = 1024, quality = 0.82) {
+function compressImage(file, maxDim = 800, quality = 0.80) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
     reader.onerror = () => reject(new Error('Could not read image file'))
