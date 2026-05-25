@@ -1,5 +1,8 @@
 const { PrismaClient } = require('@prisma/client')
-const prisma = new PrismaClient()
+const { PrismaPg } = require('@prisma/adapter-pg')
+
+const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL })
+const prisma = new PrismaClient({ adapter })
 
 const benchmarks = [
   { category: 'garage_door', label: 'Garage Door Replacement', roiPercent: 102, avgCost: 4500, notes: 'Consistently highest ROI nationally' },

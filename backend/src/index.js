@@ -1,8 +1,10 @@
 const express = require('express')
 const cors = require('cors')
 const { PrismaClient } = require('@prisma/client')
+const { PrismaPg } = require('@prisma/adapter-pg')
 
-const prisma = new PrismaClient()
+const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL })
+const prisma = new PrismaClient({ adapter })
 const app = express()
 const PORT = process.env.PORT || 3001
 

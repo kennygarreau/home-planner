@@ -1,6 +1,24 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+@theme {
+  --font-display: "Bebas Neue", cursive;
+  --font-body: "DM Sans", sans-serif;
+  --font-mono: "DM Mono", monospace;
+
+  --color-brand-50:  #f0f9f0;
+  --color-brand-100: #dcf0dc;
+  --color-brand-200: #bbe3bb;
+  --color-brand-300: #8ecf8e;
+  --color-brand-400: #5cb35c;
+  --color-brand-500: #3a9a3a;
+  --color-brand-600: #2a7a2a;
+  --color-brand-700: #226022;
+  --color-brand-800: #1e4d1e;
+  --color-brand-900: #193f19;
+
+  --color-slate-850: #172033;
+  --color-slate-950: #0a0f1a;
+}
 
 @layer base {
   * { box-sizing: border-box; }
@@ -26,20 +44,20 @@
   }
 
   .btn-primary {
-    @apply btn bg-brand-600 hover:bg-brand-500 text-white;
+    @apply inline-flex items-center gap-2 px-4 py-2 rounded-lg font-body font-medium text-sm transition-all duration-150 cursor-pointer bg-brand-600 hover:bg-brand-500 text-white;
   }
 
   .btn-ghost {
-    @apply btn bg-transparent hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700;
+    @apply inline-flex items-center gap-2 px-4 py-2 rounded-lg font-body font-medium text-sm transition-all duration-150 cursor-pointer bg-transparent hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700;
   }
 
   .btn-danger {
-    @apply btn bg-red-900/40 hover:bg-red-800 text-red-400 hover:text-red-200 border border-red-900;
+    @apply inline-flex items-center gap-2 px-4 py-2 rounded-lg font-body font-medium text-sm transition-all duration-150 cursor-pointer bg-red-900/40 hover:bg-red-800 text-red-400 hover:text-red-200 border border-red-900;
   }
 
   .input {
     @apply w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-slate-100 text-sm
-           placeholder-slate-500 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500/30
+           placeholder:text-slate-500 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500/30
            transition-colors;
   }
 
@@ -48,7 +66,7 @@
   }
 
   .stat-card {
-    @apply card flex flex-col gap-1;
+    @apply bg-slate-900 border border-slate-800 rounded-xl p-5 flex flex-col gap-1;
   }
 
   .stat-label {
