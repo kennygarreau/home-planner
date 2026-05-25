@@ -10,6 +10,8 @@ model Settings {
   id            Int      @id @default(1)
   homeValue     Float    @default(0)
   location      String   @default("")
+  aiVisionModel String?
+  aiTextModel   String?
   updatedAt     DateTime @updatedAt
 }
 

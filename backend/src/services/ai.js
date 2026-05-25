@@ -50,12 +50,12 @@ Rules:
 - If the image is blurry, partial, or not an HVAC nameplate, return null for all numeric fields and explain in notes.
 - Return integers for capacity fields — no decimals, no units embedded in the value.`
 
-async function extractNameplate(base64Image, mimeType = 'image/jpeg') {
+async function extractNameplate(base64Image, mimeType = 'image/jpeg', { visionModel } = {}) {
   if (!isEnabled()) throw new Error('AI_NOT_CONFIGURED')
 
   const client = getClient()
   const response = await client.chat.completions.create({
-    model: VISION_MODEL,
+    model: visionModel || VISION_MODEL,
     messages: [{
       role: 'user',
       content: [

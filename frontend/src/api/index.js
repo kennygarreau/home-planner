@@ -61,6 +61,8 @@ export const api = {
 
   // AI features
   aiStatus: () => req('GET', '/ai/status'),
+  aiModels: () => req('GET', '/ai/models'),
+  saveAiConfig: (data) => req('PUT', '/ai/config', data),
   extractNameplate: (data) => req('POST', '/ai/nameplate', data),
 
   // Nameplate image CRUD

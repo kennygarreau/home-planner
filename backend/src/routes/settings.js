@@ -19,7 +19,7 @@ module.exports = (prisma) => {
     try {
       const { homeValue, location } = req.body
       const settings = await prisma.settings.upsert({
-        where: { id: 1 },
+        where:  { id: 1 },
         update: { homeValue: parseFloat(homeValue) || 0, location: location || '' },
         create: { id: 1, homeValue: parseFloat(homeValue) || 0, location: location || '' },
       })

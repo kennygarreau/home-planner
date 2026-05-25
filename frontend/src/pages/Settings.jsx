@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { api } from '../api'
 import { fmtCurrency, fmtDate } from '../utils'
-import { Save, FileJson, FileText, TrendingUp, PlusCircle, Trash2 } from 'lucide-react'
+import { Save, FileJson, FileText, TrendingUp, PlusCircle, Trash2, Bot, RefreshCw } from 'lucide-react'
 
 export default function Settings() {
   const [settings, setSettings] = useState({ homeValue: '', location: '' })
@@ -12,6 +12,14 @@ export default function Settings() {
   const [newSnapshot, setNewSnapshot] = useState({ value: '', note: '' })
   const [addingSnapshot, setAddingSnapshot] = useState(false)
 
+  // AI settings
+  const [aiStatus, setAiStatus]         = useState(null)
+  const [aiModels, setAiModels]         = useState([])
+  const [aiModelsLoading, setAiModelsLoading] = useState(false)
+  const [aiVisionModel, setAiVisionModel] = useState('')
+  const [aiTextModel, setAiTextModel]   = useState('')
+  const [aiSaved, setAiSaved]           = useState(false)
+
   useEffect(() => {
     Promise.all([api.getSettings(), api.getBenchmarks(), api.getHomeValueHistory()])
       .then(([s, b, h]) => {
@@ -20,7 +28,30 @@ export default function Settings() {
         setHistory(h)
       })
       .finally(() => setLoading(false))
+
+    api.aiStatus()
+      .then(s => {
+        setAiStatus(s)
+        setAiVisionModel(s.visionModel || '')
+        setAiTextModel(s.textModel || '')
+      })
+      .catch(() => setAiStatus({ enabled: false }))
   }, [])
+
+  function loadAiModels() {
+    setAiModelsLoading(true)
+    api.aiModels()
+      .then(d => setAiModels(d.models || []))
+      .catch(() => setAiModels([]))
+      .finally(() => setAiModelsLoading(false))
+  }
+
+  async function handleSaveAiConfig() {
+    await api.saveAiConfig({ aiVisionModel, aiTextModel })
+    setAiStatus(s => ({ ...s, visionModel: aiVisionModel, textModel: aiTextModel }))
+    setAiSaved(true)
+    setTimeout(() => setAiSaved(false), 2000)
+  }
 
   async function handleSaveSettings(e) {
     e.preventDefault()
@@ -68,6 +99,84 @@ export default function Settings() {
             {saved ? 'Saved!' : 'Save Settings'}
           </button>
         </form>
+      </div>
+
+      {/* AI Configuration */}
+      <div className="card space-y-4 md:space-y-5">
+        <div className="flex items-center gap-2">
+          <Bot size={16} className="text-amber-400" />
+          <h2 className="font-display tracking-widest uppercase text-slate-300 text-lg md:text-xl">AI</h2>
+          <span className={`ml-auto text-xs px-2 py-0.5 rounded-full font-mono ${
+            aiStatus?.enabled
+              ? 'bg-emerald-900/40 text-emerald-400 border border-emerald-800/40'
+              : 'bg-slate-800 text-slate-500 border border-slate-700'
+          }`}>
+            {aiStatus === null ? '…' : aiStatus.enabled ? 'enabled' : 'disabled'}
+          </span>
+        </div>
+
+        {aiStatus?.enabled ? (
+          <div className="space-y-4">
+            <p className="text-sm text-slate-500">
+              Select which models to use for nameplate scanning. Models are loaded from your LiteLLM endpoint.
+            </p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="label">Vision Model</label>
+                <div className="flex gap-2">
+                  <select
+                    className="input flex-1"
+                    value={aiVisionModel}
+                    onChange={e => setAiVisionModel(e.target.value)}
+                  >
+                    {aiVisionModel && !aiModels.includes(aiVisionModel) && (
+                      <option value={aiVisionModel}>{aiVisionModel}</option>
+                    )}
+                    {aiModels.length === 0 && <option value="">— load models —</option>}
+                    {aiModels.map(m => <option key={m} value={m}>{m}</option>)}
+                  </select>
+                </div>
+                <p className="text-xs text-slate-600 mt-1">Used for nameplate photo reading</p>
+              </div>
+
+              <div>
+                <label className="label">Text Model</label>
+                <select
+                  className="input w-full"
+                  value={aiTextModel}
+                  onChange={e => setAiTextModel(e.target.value)}
+                >
+                  {aiTextModel && !aiModels.includes(aiTextModel) && (
+                    <option value={aiTextModel}>{aiTextModel}</option>
+                  )}
+                  {aiModels.length === 0 && <option value="">— load models —</option>}
+                  {aiModels.map(m => <option key={m} value={m}>{m}</option>)}
+                </select>
+                <p className="text-xs text-slate-600 mt-1">Reserved for future text-based AI features</p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <button className="btn-primary" onClick={handleSaveAiConfig}>
+                <Save size={14} />
+                {aiSaved ? 'Saved!' : 'Save AI Config'}
+              </button>
+              <button
+                className="btn-ghost flex items-center gap-1.5"
+                onClick={loadAiModels}
+                disabled={aiModelsLoading}
+              >
+                <RefreshCw size={13} className={aiModelsLoading ? 'animate-spin' : ''} />
+                {aiModelsLoading ? 'Loading…' : 'Load models from LiteLLM'}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <p className="text-sm text-slate-500">
+            Set <code className="text-slate-400 bg-slate-800 px-1 rounded">AI_ENABLED=true</code> and <code className="text-slate-400 bg-slate-800 px-1 rounded">AI_BASE_URL</code> in your <code className="text-slate-400 bg-slate-800 px-1 rounded">.env</code> to enable AI features.
+          </p>
+        )}
       </div>
 
       {/* Home Value History */}
