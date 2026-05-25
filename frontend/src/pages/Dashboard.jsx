@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { TrendingUp, DollarSign, Hammer, CheckCircle, Clock, ArrowUpRight, AlertTriangle, CalendarClock, ListTodo } from 'lucide-react'
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, LineChart, Line, CartesianGrid } from 'recharts'
+import { LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer } from 'recharts'
 import { api } from '../api'
 import { fmtCurrency, fmtDate, STATUS_COLORS, STATUS_LABELS, PRIORITY_COLORS } from '../utils'
 
@@ -9,20 +9,6 @@ const STALE_DAYS = 60
 function daysSince(dateStr) {
   if (!dateStr) return Infinity
   return Math.floor((Date.now() - new Date(dateStr).getTime()) / (1000 * 60 * 60 * 24))
-}
-
-const CustomTooltip = ({ active, payload, label }) => {
-  if (active && payload && payload.length) {
-    return (
-      <div className="bg-slate-800 border border-slate-700 rounded-lg p-3 text-sm shadow-xl">
-        <p className="text-slate-400 mb-1">{label}</p>
-        {payload.map((p, i) => (
-          <p key={i} style={{ color: p.color }}>{p.name}: {fmtCurrency(p.value)}</p>
-        ))}
-      </div>
-    )
-  }
-  return null
 }
 
 const ValueTooltip = ({ active, payload, label }) => {
@@ -78,22 +64,18 @@ export default function Dashboard() {
   const chartData = [...projects]
     .filter(p => p.estimatedCost > 0)
     .sort((a, b) => b.estimatedCost - a.estimatedCost)
-    .slice(0, 8)
-    .map(p => ({
-      name: p.name.length > 14 ? p.name.slice(0, 12) + '…' : p.name,
-      estimated: p.estimatedCost,
-      actual: p.actualCost || 0,
-    }))
+    .slice(0, 10)
+    .map(p => ({ name: p.name, estimated: p.estimatedCost, actual: p.actualCost || 0 }))
 
   const roiChart = [...projects]
     .filter(p => p.roiBenchmark > 0 && p.estimatedCost > 0)
     .map(p => ({
-      name: p.name.length > 14 ? p.name.slice(0, 12) + '…' : p.name,
+      name: p.name,
       roi: p.roiBenchmark,
       valueAdded: Math.round(p.estimatedCost * p.roiBenchmark / 100),
     }))
     .sort((a, b) => b.roi - a.roi)
-    .slice(0, 8)
+    .slice(0, 10)
 
   const upcoming = projects
     .filter(p => p.scheduledStart && p.status !== 'done')
@@ -179,15 +161,33 @@ export default function Dashboard() {
           {chartData.length === 0 ? (
             <p className="text-sm py-8 text-center text-slate-500">No projects with costs yet.</p>
           ) : (
-            <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={chartData} margin={{ top: 0, right: 0, left: 0, bottom: 45 }}>
-                <XAxis dataKey="name" tick={{ fill: '#64748b', fontSize: 10 }} angle={-35} textAnchor="end" interval={0} />
-                <YAxis tick={{ fill: '#64748b', fontSize: 10 }} tickFormatter={v => `$${(v / 1000).toFixed(0)}k`} width={36} />
-                <Tooltip content={<CustomTooltip />} />
-                <Bar dataKey="estimated" name="Estimated" fill="#3b82f6" radius={[3, 3, 0, 0]} />
-                <Bar dataKey="actual" name="Actual" fill="#22c55e" radius={[3, 3, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+            <div className="overflow-x-auto rounded-xl border border-slate-800">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-slate-800 bg-slate-900/50">
+                    <th className="text-left px-4 py-2.5 text-xs font-mono uppercase tracking-wider text-slate-500 font-normal">Project</th>
+                    <th className="text-right px-4 py-2.5 text-xs font-mono uppercase tracking-wider text-slate-500 font-normal">Estimated</th>
+                    <th className="text-right px-4 py-2.5 text-xs font-mono uppercase tracking-wider text-slate-500 font-normal">Actual</th>
+                    <th className="text-right px-4 py-2.5 text-xs font-mono uppercase tracking-wider text-slate-500 font-normal">Δ</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {chartData.map((p, i) => {
+                    const delta = p.actual > 0 ? p.actual - p.estimated : null
+                    return (
+                      <tr key={i} className="border-b border-slate-800/50 last:border-0 hover:bg-slate-800/20">
+                        <td className="px-4 py-2.5 text-slate-200 max-w-[180px] truncate">{p.name}</td>
+                        <td className="px-4 py-2.5 text-right font-mono text-blue-300">{fmtCurrency(p.estimated)}</td>
+                        <td className="px-4 py-2.5 text-right font-mono text-teal-300">{p.actual > 0 ? fmtCurrency(p.actual) : <span className="text-slate-600">—</span>}</td>
+                        <td className={`px-4 py-2.5 text-right font-mono text-xs ${delta === null ? 'text-slate-600' : delta > 0 ? 'text-red-400' : 'text-teal-400'}`}>
+                          {delta === null ? '—' : `${delta > 0 ? '+' : ''}${fmtCurrency(delta)}`}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
 
@@ -261,24 +261,33 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* ROI chart */}
+      {/* ROI table */}
       {roiChart.length > 0 && (
         <div className="card">
           <h2 className="font-display text-lg md:text-xl tracking-widest text-slate-200 mb-4">ROI BY PROJECT</h2>
-          <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={roiChart} margin={{ top: 0, right: 0, left: 0, bottom: 45 }}>
-              <XAxis dataKey="name" tick={{ fill: '#64748b', fontSize: 10 }} angle={-35} textAnchor="end" interval={0} />
-              <YAxis yAxisId="left" tick={{ fill: '#64748b', fontSize: 10 }} tickFormatter={v => `${v}%`} width={36} />
-              <YAxis yAxisId="right" orientation="right" tick={{ fill: '#64748b', fontSize: 10 }} tickFormatter={v => `$${(v / 1000).toFixed(0)}k`} width={36} />
-              <Tooltip content={<CustomTooltip />} />
-              <Bar yAxisId="left" dataKey="roi" name="ROI %" radius={[3, 3, 0, 0]}>
-                {roiChart.map((entry, i) => (
-                  <Cell key={i} fill={entry.roi >= 100 ? '#22c55e' : entry.roi >= 70 ? '#3b82f6' : '#f59e0b'} />
-                ))}
-              </Bar>
-              <Bar yAxisId="right" dataKey="valueAdded" name="Value Added" fill="#334155" radius={[3, 3, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
+          <div className="overflow-x-auto rounded-xl border border-slate-800">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-800 bg-slate-900/50">
+                  <th className="text-left px-4 py-2.5 text-xs font-mono uppercase tracking-wider text-slate-500 font-normal">Project</th>
+                  <th className="text-right px-4 py-2.5 text-xs font-mono uppercase tracking-wider text-slate-500 font-normal">ROI</th>
+                  <th className="text-right px-4 py-2.5 text-xs font-mono uppercase tracking-wider text-slate-500 font-normal">Value Added</th>
+                </tr>
+              </thead>
+              <tbody>
+                {roiChart.map((p, i) => {
+                  const roiCls = p.roi >= 100 ? 'text-teal-400' : p.roi >= 70 ? 'text-blue-400' : 'text-amber-400'
+                  return (
+                    <tr key={i} className="border-b border-slate-800/50 last:border-0 hover:bg-slate-800/20">
+                      <td className="px-4 py-2.5 text-slate-200 max-w-[220px] truncate">{p.name}</td>
+                      <td className={`px-4 py-2.5 text-right font-mono font-medium ${roiCls}`}>{p.roi}%</td>
+                      <td className="px-4 py-2.5 text-right font-mono text-slate-300">{fmtCurrency(p.valueAdded)}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>

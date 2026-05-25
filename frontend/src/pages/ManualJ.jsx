@@ -721,67 +721,61 @@ export default function ManualJ() {
   }
 
   return (
-    <div className="flex h-full overflow-hidden">
+    <div className="flex flex-col h-full overflow-hidden">
 
-      {/* ── Desktop sidebar ── */}
-      <nav className="hidden lg:flex w-[200px] flex-shrink-0 border-r border-slate-800 flex-col overflow-y-auto py-4 bg-slate-900/30">
-        <div className="px-4 pb-2 text-xs font-mono uppercase tracking-widest text-slate-600">
-          {mode === 'whole' ? 'Whole Home' : 'Zone Steps'}
+      {/* ── Header bar ── */}
+      <div className="flex items-center gap-3 px-5 py-3 border-b border-slate-800 bg-slate-900/50 flex-shrink-0">
+        <div className="flex items-center gap-2">
+          <span className="font-display text-lg tracking-widest uppercase text-slate-100">Manual</span>
+          <span className="font-display text-lg tracking-widest uppercase text-amber-400">J</span>
+          <span className="font-mono text-[10px] bg-amber-500 text-slate-950 px-1.5 py-0.5 rounded font-semibold tracking-wider">MULTI-ZONE</span>
         </div>
+        <div className="ml-auto flex items-center gap-1 bg-slate-800 border border-slate-700 rounded-lg p-0.5">
+          {(['whole', 'zones']).map(m => (
+            <button key={m} onClick={() => switchMode(m)}
+              className={`px-3 py-1.5 rounded-md text-xs font-mono transition-all ${
+                mode === m ? 'bg-amber-500 text-slate-950 font-semibold' : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              {m === 'whole' ? 'Whole Home' : 'Zone-by-Zone'}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Desktop step progress bar ── */}
+      <div className="hidden lg:flex items-center overflow-x-auto border-b border-slate-800 bg-slate-900/20 flex-shrink-0" style={{ scrollbarWidth: 'none' }}>
         {stepLabels.map((label, i) => (
           <button key={i} onClick={() => goStep(i)}
-            className={`flex items-center gap-2 px-4 py-2 text-xs text-left transition-all border-l-2 ${
+            className={`flex items-center gap-2 px-4 py-2.5 text-xs border-b-2 transition-all whitespace-nowrap flex-shrink-0 ${
               i === step
                 ? 'border-amber-500 text-amber-400 bg-amber-500/5'
                 : 'border-transparent text-slate-500 hover:text-slate-300 hover:bg-slate-800/50'
             }`}
           >
-            <span className="font-mono text-slate-600 w-5 shrink-0 text-right">
-              {String(i + (mode === 'zones' ? 1 : 0)).padStart(2, '0')}
-            </span>
+            <span className="font-mono text-slate-700 text-[10px] w-4 text-right">{String(i + (mode === 'zones' ? 1 : 0)).padStart(2, '0')}</span>
             {label}
           </button>
         ))}
         {mode === 'zones' && (
-          <>
-            <div className="h-px bg-slate-800 mx-4 my-2" />
-            <div className="px-4 pb-1 text-xs font-mono uppercase tracking-widest text-slate-600">Summary</div>
-            <button onClick={() => goStep(7)}
-              className={`flex items-center gap-2 px-4 py-2 text-xs text-left transition-all border-l-2 ${
-                step === 7
-                  ? 'border-amber-500 text-amber-400 bg-amber-500/5'
-                  : 'border-transparent text-slate-500 hover:text-slate-300 hover:bg-slate-800/50'
-              }`}
-            >
-              <span className="font-mono text-slate-600 w-5 shrink-0 text-right">Σ</span>
-              All Zones
-            </button>
-          </>
+          <button onClick={() => goStep(7)}
+            className={`flex items-center gap-2 px-4 py-2.5 text-xs border-b-2 transition-all whitespace-nowrap flex-shrink-0 ${
+              step === 7
+                ? 'border-amber-500 text-amber-400 bg-amber-500/5'
+                : 'border-transparent text-slate-500 hover:text-slate-300 hover:bg-slate-800/50'
+            }`}
+          >
+            <span className="font-mono text-slate-700 text-[10px] w-4 text-right">Σ</span>
+            All Zones
+          </button>
         )}
-      </nav>
+      </div>
+
+      {/* ── Content row ── */}
+      <div className="flex flex-1 overflow-hidden">
 
       {/* ── Main column ── */}
       <div className="flex-1 flex flex-col overflow-hidden">
-
-        {/* Header bar */}
-        <div className="flex items-center gap-3 px-5 py-3 border-b border-slate-800 bg-slate-900/50 flex-shrink-0">
-          <div className="flex items-center gap-2">
-            <span className="font-display text-lg tracking-widest uppercase text-slate-100">Manual</span>
-            <span className="font-display text-lg tracking-widest uppercase text-amber-400">J</span>
-            <span className="font-mono text-[10px] bg-amber-500 text-slate-950 px-1.5 py-0.5 rounded font-semibold tracking-wider">MULTI-ZONE</span>
-          </div>
-          <div className="ml-auto flex items-center gap-1 bg-slate-800 border border-slate-700 rounded-lg p-0.5">
-            {(['whole', 'zones'] ).map(m => (
-              <button key={m} onClick={() => switchMode(m)}
-                className={`px-3 py-1.5 rounded-md text-xs font-mono transition-all ${
-                  mode === m ? 'bg-amber-500 text-slate-950 font-semibold' : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                {m === 'whole' ? 'Whole Home' : 'Zone-by-Zone'}
-              </button>
-            ))}
-          </div>
-        </div>
 
         {/* Scrollable content */}
         <div className="flex-1 overflow-y-auto">
@@ -859,6 +853,8 @@ export default function ManualJ() {
         </div>
         <LivePanel zone={activeZone} climate={climate} />
       </aside>
+
+      </div>{/* ── end content row ── */}
 
       {/* ── Mobile estimate drawer ── */}
       {drawerOpen && (
