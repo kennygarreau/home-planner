@@ -51,6 +51,7 @@ export default function NameplateScanner({ entityType, entityId, label, onApply 
   const [edits, setEdits]             = useState({})       // user-editable extracted values
   const [savedRecord, setSavedRecord] = useState(null)     // persisted DB record (meta only)
   const [thumbUrl, setThumbUrl]       = useState(null)     // preview data URL
+  const [lightbox, setLightbox]       = useState(false)
   const [errorMsg, setErrorMsg]       = useState('')
   const inputRef = useRef(null)
 
@@ -168,8 +169,8 @@ export default function NameplateScanner({ entityType, entityId, label, onApply 
                   src={thumbUrl}
                   alt={`${label} nameplate`}
                   className="h-9 w-16 object-cover rounded border border-slate-700 cursor-pointer"
-                  onClick={() => setPhase('confirming')}
-                  title="Click to review"
+                  onClick={() => setLightbox(true)}
+                  title="Click to enlarge"
                 />
                 <button
                   type="button"
@@ -349,6 +350,28 @@ export default function NameplateScanner({ entityType, entityId, label, onApply 
         className="hidden"
         onChange={handleFile}
       />
+
+      {/* ── Lightbox ── */}
+      {lightbox && thumbUrl && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm"
+          onClick={() => setLightbox(false)}
+        >
+          <img
+            src={thumbUrl}
+            alt={`${label} nameplate`}
+            className="max-w-[90vw] max-h-[90vh] rounded-lg shadow-2xl border border-slate-700 object-contain"
+            onClick={e => e.stopPropagation()}
+          />
+          <button
+            type="button"
+            onClick={() => setLightbox(false)}
+            className="absolute top-4 right-4 text-white/70 hover:text-white bg-black/40 rounded-full w-8 h-8 flex items-center justify-center text-lg"
+          >
+            <X size={18} />
+          </button>
+        </div>
+      )}
     </div>
   )
 }
