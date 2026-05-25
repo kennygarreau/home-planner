@@ -89,3 +89,17 @@ model ManualJScenario {
   zones     Json     @default("[]")
   updatedAt DateTime @updatedAt
 }
+
+model NameplateImage {
+  id            String   @id @default(cuid())
+  entityType    String
+  entityId      String
+  imageData     String
+  mimeType      String   @default("image/jpeg")
+  extractedData Json?
+  modelUsed     String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([entityType, entityId])
+}

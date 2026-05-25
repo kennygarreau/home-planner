@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { api } from '../api'
+import NameplateScanner from '../components/NameplateScanner'
 
 // ─────────────────────────────────────────────
 // CONSTANTS
@@ -519,20 +520,36 @@ function InternalsStep({ zone, onChange, onBack, onNext }) {
   )
 }
 
-function EquipmentStep({ zone, onChange, onBack, onNext }) {
+function EquipmentStep({ zone, onChange, onBack, onNext, entityId }) {
   const set = (k, v) => onChange({ ...zone, [k]: v })
+  const applyNameplate = (values) => {
+    if (Object.keys(values).length) onChange({ ...zone, ...values })
+  }
   return (
     <div className="space-y-4 max-w-2xl">
       <Explainer>
         <strong>Finding capacity:</strong> Check the furnace nameplate for input BTU/hr.
         AC tonnage is often in the model number (e.g., "024" = 24,000 BTU = 2 ton). 12,000 BTU = 1 ton.
+        Use <strong>📷 Scan nameplate</strong> to auto-fill from a photo.
       </Explainer>
       <FGrid>
         <Field label="Furnace Capacity (BTU/hr)" hint="Input BTU from nameplate — typically 40k–120k">
           <input className="input" type="number" value={zone.furnace_cap} onChange={e => set('furnace_cap', +e.target.value)} />
+          <NameplateScanner
+            entityType="manualj_furnace"
+            entityId={entityId}
+            label="furnace"
+            onApply={applyNameplate}
+          />
         </Field>
         <Field label="AC Capacity (BTU/hr)" hint="2T=24k · 3T=36k · 4T=48k">
           <input className="input" type="number" value={zone.ac_cap} onChange={e => set('ac_cap', +e.target.value)} />
+          <NameplateScanner
+            entityType="manualj_ac"
+            entityId={entityId}
+            label="AC"
+            onApply={applyNameplate}
+          />
         </Field>
         <Field label="Duct Location">
           <select className="input" value={zone.duct_location} onChange={e => set('duct_location', e.target.value)}>
@@ -948,7 +965,7 @@ export default function ManualJ() {
       if (step === 3) return <WindowsStep    zone={activeZone}    onChange={setActiveZone}  onBack={() => goStep(2)} onNext={() => goStep(4)} />
       if (step === 4) return <InfiltrationStep zone={activeZone}  onChange={setActiveZone}  onBack={() => goStep(3)} onNext={() => goStep(5)} />
       if (step === 5) return <InternalsStep  zone={activeZone}    onChange={setActiveZone}  onBack={() => goStep(4)} onNext={() => goStep(6)} />
-      if (step === 6) return <EquipmentStep  zone={activeZone}    onChange={setActiveZone}  onBack={() => goStep(5)} onNext={() => goStep(7)} />
+      if (step === 6) return <EquipmentStep  zone={activeZone}    onChange={setActiveZone}  onBack={() => goStep(5)} onNext={() => goStep(7)} entityId="manualj-whole" />
       if (step === 7) return <FullResults    zone={wholeZone}     climate={climate}         onBack={() => goStep(6)} onPrint={printManualJReport} />
     } else {
       if (step === 0) return (
@@ -961,7 +978,7 @@ export default function ManualJ() {
       if (step === 2) return <WindowsStep     zone={activeZone}  onChange={setActiveZone}  onBack={() => goStep(1)} onNext={() => goStep(3)} />
       if (step === 3) return <InfiltrationStep zone={activeZone} onChange={setActiveZone}  onBack={() => goStep(2)} onNext={() => goStep(4)} />
       if (step === 4) return <InternalsStep   zone={activeZone}  onChange={setActiveZone}  onBack={() => goStep(3)} onNext={() => goStep(5)} />
-      if (step === 5) return <EquipmentStep   zone={activeZone}  onChange={setActiveZone}  onBack={() => goStep(4)} onNext={() => goStep(6)} />
+      if (step === 5) return <EquipmentStep   zone={activeZone}  onChange={setActiveZone}  onBack={() => goStep(4)} onNext={() => goStep(6)} entityId={`manualj-zone-${currentZone}`} />
       if (step === 6) return <FullResults     zone={activeZone}  climate={climate}         onBack={() => goStep(5)} onPrint={() => goStep(7)} />
       if (step === 7) return <SummaryStep     zones={zones}      climate={climate}         onBack={() => goStep(6)} onPrint={printManualJReport} />
     }

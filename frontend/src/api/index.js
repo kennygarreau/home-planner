@@ -58,4 +58,14 @@ export const api = {
   // Manual J load calculator
   getManualJ: () => req('GET', '/manualj'),
   saveManualJ: (data) => req('PUT', '/manualj', data),
+
+  // AI features
+  aiStatus: () => req('GET', '/ai/status'),
+  extractNameplate: (data) => req('POST', '/ai/nameplate', data),
+
+  // Nameplate image CRUD
+  getNameplates: (entityType, entityId) =>
+    req('GET', `/nameplates?entityType=${encodeURIComponent(entityType)}&entityId=${encodeURIComponent(entityId)}`),
+  updateNameplate: (id, extractedData) => req('PUT', `/nameplates/${id}`, { extractedData }),
+  deleteNameplate: (id) => req('DELETE', `/nameplates/${id}`),
 }
