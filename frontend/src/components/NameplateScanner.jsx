@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Camera, RefreshCw, Check, X, AlertTriangle, Search } from 'lucide-react'
+import { Camera, RefreshCw, Check, X, AlertTriangle } from 'lucide-react'
 import { api } from '../api'
 
 // Resize + JPEG-compress an image File to a base64 string (no data: prefix)
@@ -97,11 +97,6 @@ export default function NameplateScanner({ entityType, entityId, label, onApply 
 
     try {
       const result = await api.extractNameplate({ entityType, entityId, imageData: base64, mimeType: 'image/jpeg' })
-
-      // If the backend performed a model lookup, reflect that in the spinner message briefly
-      const didLookup = result.extracted?.furnace_cap_source === 'model_lookup' ||
-                        result.extracted?.ac_cap_source      === 'model_lookup'
-      if (didLookup) setScanMsg('Looked up model specs…')
 
       setExtracted(result)
       setSavedRecord(result.record)
@@ -215,17 +210,11 @@ export default function NameplateScanner({ entityType, entityId, label, onApply 
                   {stored.furnace_cap && (
                     <span className="text-[10px] text-slate-400">
                       {stored.furnace_cap.toLocaleString()} BTU input
-                      {stored.furnace_cap_source === 'model_lookup' && (
-                        <span className="ml-1 text-amber-500/70" title="Value from model lookup">⚡ lookup</span>
-                      )}
                     </span>
                   )}
                   {stored.ac_cap && (
                     <span className="text-[10px] text-slate-400">
                       {stored.ac_cap.toLocaleString()} BTU cooling
-                      {stored.ac_cap_source === 'model_lookup' && (
-                        <span className="ml-1 text-amber-500/70" title="Value from model lookup">⚡ lookup</span>
-                      )}
                     </span>
                   )}
                 </div>
@@ -288,16 +277,9 @@ export default function NameplateScanner({ entityType, entityId, label, onApply 
           {/* Editable capacity fields with source badges */}
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <div className="flex items-center gap-1.5 mb-0.5">
-                <label className="text-[10px] font-mono uppercase tracking-wider text-slate-500">
-                  Furnace Input BTU/hr
-                </label>
-                {ext?.furnace_cap_source === 'model_lookup' && (
-                  <span className="flex items-center gap-0.5 text-[9px] text-amber-500/80 bg-amber-950/30 px-1 py-0.5 rounded">
-                    <Search size={8} /> lookup
-                  </span>
-                )}
-              </div>
+              <label className="text-[10px] font-mono uppercase tracking-wider text-slate-500 mb-0.5 block">
+                Furnace Input BTU/hr
+              </label>
               <input
                 className="input text-xs font-mono"
                 type="number"
@@ -309,16 +291,9 @@ export default function NameplateScanner({ entityType, entityId, label, onApply 
               />
             </div>
             <div>
-              <div className="flex items-center gap-1.5 mb-0.5">
-                <label className="text-[10px] font-mono uppercase tracking-wider text-slate-500">
-                  AC Capacity BTU/hr
-                </label>
-                {ext?.ac_cap_source === 'model_lookup' && (
-                  <span className="flex items-center gap-0.5 text-[9px] text-amber-500/80 bg-amber-950/30 px-1 py-0.5 rounded">
-                    <Search size={8} /> lookup
-                  </span>
-                )}
-              </div>
+              <label className="text-[10px] font-mono uppercase tracking-wider text-slate-500 mb-0.5 block">
+                AC Capacity BTU/hr
+              </label>
               <input
                 className="input text-xs font-mono"
                 type="number"
