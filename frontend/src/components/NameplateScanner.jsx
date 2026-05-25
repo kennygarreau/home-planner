@@ -3,31 +3,35 @@ import { Camera, RefreshCw, Check, X, AlertTriangle } from 'lucide-react'
 import { api } from '../api'
 
 // Resize + JPEG-compress an image File to a base64 string (no data: prefix)
+// Uses FileReader → data URL so it works on iOS/Android without HEIC issues.
 function compressImage(file, maxDim = 1024, quality = 0.82) {
   return new Promise((resolve, reject) => {
-    const img = new Image()
-    const url = URL.createObjectURL(file)
-    img.onload = () => {
-      URL.revokeObjectURL(url)
-      const scale = Math.min(1, maxDim / Math.max(img.width, img.height))
-      const canvas = document.createElement('canvas')
-      canvas.width  = Math.round(img.width  * scale)
-      canvas.height = Math.round(img.height * scale)
-      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height)
-      canvas.toBlob(
-        blob => {
-          if (!blob) { reject(new Error('Image compression failed')); return }
-          const reader = new FileReader()
-          reader.onload  = () => resolve(reader.result.split(',')[1])
-          reader.onerror = reject
-          reader.readAsDataURL(blob)
-        },
-        'image/jpeg',
-        quality,
-      )
+    const reader = new FileReader()
+    reader.onerror = () => reject(new Error('Could not read image file'))
+    reader.onload = () => {
+      const img = new Image()
+      img.onerror = () => reject(new Error('Could not decode image — try a JPEG or PNG photo'))
+      img.onload = () => {
+        const scale = Math.min(1, maxDim / Math.max(img.width, img.height))
+        const canvas = document.createElement('canvas')
+        canvas.width  = Math.round(img.width  * scale)
+        canvas.height = Math.round(img.height * scale)
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height)
+        canvas.toBlob(
+          blob => {
+            if (!blob) { reject(new Error('Image compression failed')); return }
+            const r2 = new FileReader()
+            r2.onload  = () => resolve(r2.result.split(',')[1])
+            r2.onerror = reject
+            r2.readAsDataURL(blob)
+          },
+          'image/jpeg',
+          quality,
+        )
+      }
+      img.src = reader.result
     }
-    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Could not load image')) }
-    img.src = url
+    reader.readAsDataURL(file)
   })
 }
 
