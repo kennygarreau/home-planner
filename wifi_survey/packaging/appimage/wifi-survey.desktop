@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=wifi-survey
+Comment=Wi-Fi survey measurement agent for home-planner
+Exec=wifi-survey
+Icon=wifi-survey
+Categories=Network;
+Terminal=true

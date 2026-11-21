@@ -1,0 +1,1 @@
+Real output from the home-planner server (Intel Alder Lake-N CNVi, 8086:54f0; Wi-Fi 6, no 6 GHz, regdomain 00, interface not connected), captured 2026-11-21 and redacted with wifi_survey.collect.redact.

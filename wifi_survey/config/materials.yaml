@@ -1,0 +1,22 @@
+# Attenuation in dB per band. STARTING VALUES ONLY — loosely based on published
+# measurements; Phase 4 calibration fits a correction per material to your house.
+# Keys must match the floor plan editor (frontend/src/floorplan/geometry.js).
+schema_version: 1
+
+walls:
+  drywall:        {"2.4": 3,  "5": 4,  "6": 5}     # 1/2" gypsum both sides of studs
+  exterior_frame: {"2.4": 6,  "5": 9,  "6": 11}    # sheathing + insulation + siding
+  plaster_lath:   {"2.4": 8,  "5": 12, "6": 14}    # wood lath; METAL lath can exceed 20 dB
+  brick:          {"2.4": 8,  "5": 12, "6": 15}
+  concrete:       {"2.4": 12, "5": 18, "6": 22}    # block / poured
+  wood:           {"2.4": 4,  "5": 6,  "6": 7}     # solid wood / log
+  glass:          {"2.4": 2,  "5": 3,  "6": 4}     # clear glass; low-e coated can be 10-25 dB
+  metal:          {"2.4": 25, "5": 30, "6": 32}
+
+openings:
+  wood_door:      {"2.4": 3,  "5": 4,  "6": 5}
+  glass:          {"2.4": 2,  "5": 3,  "6": 4}
+
+floors:
+  wood_joist:     {"2.4": 10, "5": 14, "6": 17}
+  concrete_slab:  {"2.4": 18, "5": 25, "6": 30}

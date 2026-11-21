@@ -1,0 +1,10 @@
+# Real house / network data never leaves this machine (see docs/wifi-survey-plan.md §1)
+data/
+out/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+# Raw, unredacted command captures
+tests/fixtures/_raw/

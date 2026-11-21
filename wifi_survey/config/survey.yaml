@@ -1,0 +1,19 @@
+# Survey settings. Copy to ~/.config/wifi-survey/survey.yaml on the laptop to
+# override without touching the repo.
+schema_version: 1
+
+interface: auto                 # or e.g. wlp128s20f3
+home_planner_url: http://192.168.50.51:3000
+
+iperf:
+  server: 192.168.50.51         # wired box running `iperf3 -s`
+  port: 5201
+  duration_s: 10
+
+ping:
+  target: gateway               # "gateway" = default route, or a host/IP
+  count: 20
+
+samples_per_point: 3            # scans per point; median signal per BSSID
+settle_s: 3                     # wait after arriving at a point
+height_m: 1.0                   # hold the laptop at about this height

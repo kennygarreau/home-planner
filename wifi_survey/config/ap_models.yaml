@@ -1,0 +1,14 @@
+# AP radio specs per band. The Omada model is NOT confirmed yet (spec §1):
+# replace "omada_be11000_tbd" with the exact model (e.g. EAP7xx) and fill in
+# tx power / antenna gain from its datasheet. Values below are placeholders.
+schema_version: 1
+
+models:
+  omada_be11000_tbd:
+    vendor: TP-Link Omada
+    confirmed: false
+    poe: "802.3at"
+    bands:
+      "2.4": {tx_power_dbm: 20, antenna_gain_dbi: 4, max_width_mhz: 40}
+      "5":   {tx_power_dbm: 23, antenna_gain_dbi: 5, max_width_mhz: 160}
+      "6":   {tx_power_dbm: 23, antenna_gain_dbi: 5, max_width_mhz: 320}

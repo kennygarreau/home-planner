@@ -1,0 +1,11 @@
+#!/bin/sh
+# Entry point of wifi-survey-x86_64.AppImage: runs the bundled Python with the
+# wifi_survey CLI. Based on python-appimage's AppRun, minus Tcl/Tk.
+if [ -z "${APPDIR:-}" ]; then
+    APPDIR="$(dirname "$(readlink -f -- "$0")")"
+    export APPDIR
+fi
+export SSL_CERT_FILE="${SSL_CERT_FILE:-$APPDIR/opt/_internal/certs.pem}"
+export PYTHONNOUSERSITE=1
+unset PYTHONHOME PYTHONPATH
+exec "$APPDIR/opt/python3.12/bin/python3.12" -s -m wifi_survey "$@"
