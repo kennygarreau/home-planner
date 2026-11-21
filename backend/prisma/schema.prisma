@@ -122,3 +122,55 @@ model NameplateImage {
 
   @@index([entityType, entityId])
 }
+
+// One row per floor. `data` holds geometry in inches:
+// { nodes, walls, rooms, openings } — see frontend/src/floorplan/geometry.js
+// `north` is degrees clockwise from plan-up; the UI keeps it identical across floors.
+model FloorPlan {
+  id        String   @id @default(cuid())
+  name      String
+  level     Int      @default(0)
+  ceilingHt Float    @default(9)
+  north     Float    @default(0)
+  data      Json     @default("{}")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Wi-Fi survey (docs/wifi-survey-plan.md). A survey is one pass through the
+// house; each point is one measurement spot. A point doubles as the job the
+// laptop agent picks up: status queued → running → done | failed | cancelled | expired.
+model Survey {
+  id        String        @id @default(cuid())
+  name      String
+  type      String        @default("baseline") // baseline | ap_on_a_stick | validation
+  notes     String        @default("")
+  meta      Json          @default("{}")       // test AP, agent/laptop info, iperf server…
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  points    SurveyPoint[]
+}
+
+model SurveyPoint {
+  id         String    @id @default(cuid())
+  surveyId   String
+  survey     Survey    @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  floorId    String
+  roomId     String?
+  label      String              // e.g. "kitchen-02"; suggested points keep their label
+  x          Float               // inches, floor plan coordinates
+  y          Float
+  status     String    @default("queued")
+  agentId    String?
+  progress   Json?               // { step, message } while running
+  record     Json?               // spec §2.2 point record from the agent
+  error      String?
+  queuedAt   DateTime  @default(now())
+  startedAt  DateTime?
+  measuredAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([surveyId])
+  @@index([status, queuedAt])
+}

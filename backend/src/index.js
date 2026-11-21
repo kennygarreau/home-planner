@@ -28,6 +28,9 @@ app.use('/api/ai', require('./routes/ai')(prisma))
 app.use('/api/nameplates', require('./routes/nameplates')(prisma))
 app.use('/api/contractors', require('./routes/contractors')(prisma))
 app.use('/api/detectors', require('./routes/detectors')(prisma))
+app.use('/api/floorplans', require('./routes/floorplans')(prisma))
+app.use('/api/surveys', require('./routes/surveys')(prisma))
+app.use('/api/survey-agent', require('./routes/surveyAgent')(prisma))
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }))
 
