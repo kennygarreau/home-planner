@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { ArrowLeft, Wind, PaintBucket, TrendingUp, Calculator, Thermometer } from 'lucide-react'
+import { ArrowLeft, Wind, PaintBucket, TrendingUp, Calculator, Thermometer, Wifi } from 'lucide-react'
 import HvacComparison from './HvacComparison'
+import WifiSurveyAgent from './WifiSurveyAgent'
 
 // ─────────────────────────────────────────────
 // SHARED UI HELPERS
@@ -633,6 +634,15 @@ const TOOLS = [
     component: HvacComparison,
     color: 'text-orange-400',
     bg: 'bg-orange-900/20 border-orange-800/30',
+  },
+  {
+    id: 'wifi',
+    label: 'Wi-Fi Survey',
+    icon: Wifi,
+    desc: 'Download the laptop survey agent and set it up to measure coverage room by room',
+    component: WifiSurveyAgent,
+    color: 'text-sky-400',
+    bg: 'bg-sky-900/20 border-sky-800/30',
   },
 ]
 

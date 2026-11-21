@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { api } from '../api'
 import NameplateScanner from '../components/NameplateScanner'
+import FloorPlanImport from '../components/FloorPlanImport'
 
 // ─────────────────────────────────────────────
 // CONSTANTS
@@ -383,6 +384,7 @@ function EnvelopeStep({ zone, onChange, onBack, onNext }) {
   const set = (k, v) => onChange({ ...zone, [k]: v })
   return (
     <div className="space-y-2 max-w-2xl">
+      <FloorPlanImport zone={zone} onChange={onChange} />
       <Explainer>
         <strong>Wall area</strong> = perimeter × ceiling height minus windows/doors.
         R-values are on insulation packaging (R-13, R-38, etc.).

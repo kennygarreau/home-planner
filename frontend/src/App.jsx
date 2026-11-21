@@ -9,6 +9,7 @@ import Electrical from './pages/Electrical'
 import ManualJ from './pages/ManualJ'
 import Contractors from './pages/Contractors'
 import Detectors from './pages/Detectors'
+import FloorPlans from './pages/FloorPlans'
 
 export default function App() {
   return (
@@ -25,6 +26,7 @@ export default function App() {
           <Route path="manual-j" element={<ManualJ />} />
           <Route path="contractors" element={<Contractors />} />
           <Route path="detectors" element={<Detectors />} />
+          <Route path="floor-plans" element={<FloorPlans />} />
         </Route>
       </Routes>
     </BrowserRouter>

@@ -40,6 +40,23 @@ export const api = {
   updateDetector: (id, data) => req('PUT', `/detectors/${id}`, data),
   deleteDetector: (id) => req('DELETE', `/detectors/${id}`),
 
+  // Floor plans
+  getFloorPlans: () => req('GET', '/floorplans'),
+  createFloorPlan: (data) => req('POST', '/floorplans', data),
+  updateFloorPlan: (id, data) => req('PUT', `/floorplans/${id}`, data),
+  deleteFloorPlan: (id) => req('DELETE', `/floorplans/${id}`),
+
+  // Wi-Fi surveys
+  getSurveys: () => req('GET', '/surveys'),
+  createSurvey: (data) => req('POST', '/surveys', data),
+  updateSurvey: (id, data) => req('PUT', `/surveys/${id}`, data),
+  deleteSurvey: (id) => req('DELETE', `/surveys/${id}`),
+  getSurveyState: (id) => req('GET', `/surveys/${id}`),
+  queueSurveyPoint: (id, data) => req('POST', `/surveys/${id}/points`, data),
+  remeasureSurveyPoint: (pid) => req('POST', `/surveys/points/${pid}/measure`),
+  cancelSurveyPoint: (pid) => req('POST', `/surveys/points/${pid}/cancel`),
+  deleteSurveyPoint: (pid) => req('DELETE', `/surveys/points/${pid}`),
+
   // Export
   exportJSON: () => window.open('/api/export/json', '_blank'),
   exportCSV: () => window.open('/api/export/csv', '_blank'),

@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import { Outlet, NavLink } from 'react-router-dom'
-import { LayoutDashboard, FolderOpen, Calendar, Settings, Home, Menu, X, Wrench, Zap, Thermometer, HardHat, Siren } from 'lucide-react'
+import { LayoutDashboard, FolderOpen, Calendar, Settings, Home, Menu, X, Wrench, Zap, Thermometer, HardHat, Siren, PencilRuler } from 'lucide-react'
 
 const nav = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/projects', icon: FolderOpen, label: 'Projects' },
   { to: '/calendar', icon: Calendar, label: 'Calendar' },
+  { to: '/floor-plans', icon: PencilRuler, label: 'Floor Plans' },
   { to: '/electrical', icon: Zap, label: 'Electrical' },
   { to: '/manual-j', icon: Thermometer, label: 'Manual J' },
   { to: '/tools', icon: Wrench, label: 'Tools' },

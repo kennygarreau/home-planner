@@ -39,6 +39,8 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      additional_contexts:
+        wifi_survey: ./wifi_survey   # built into /downloads/wifi-survey-x86_64.AppImage
     container_name: homeplanner-frontend
     restart: unless-stopped
     ports:
