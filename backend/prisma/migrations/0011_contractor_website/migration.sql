@@ -1,0 +1,1 @@
+ALTER TABLE "Contractor" ADD COLUMN "website" TEXT NOT NULL DEFAULT '';

@@ -25,15 +25,20 @@ export const api = {
   updateProject: (id, data) => req('PUT', `/projects/${id}`, data),
   deleteProject: (id) => req('DELETE', `/projects/${id}`),
 
-  // Backlog
-  getBacklog: () => req('GET', '/backlog'),
-  createBacklogItem: (data) => req('POST', '/backlog', data),
-  updateBacklogItem: (id, data) => req('PUT', `/backlog/${id}`, data),
-  deleteBacklogItem: (id) => req('DELETE', `/backlog/${id}`),
-  promoteBacklogItem: (id) => req('POST', `/backlog/${id}/promote`),
-
   // Benchmarks
   getBenchmarks: () => req('GET', '/benchmarks'),
+
+  // Contractors
+  getContractors: () => req('GET', '/contractors'),
+  createContractor: (data) => req('POST', '/contractors', data),
+  updateContractor: (id, data) => req('PUT', `/contractors/${id}`, data),
+  deleteContractor: (id) => req('DELETE', `/contractors/${id}`),
+
+  // Detectors
+  getDetectors: () => req('GET', '/detectors'),
+  createDetector: (data) => req('POST', '/detectors', data),
+  updateDetector: (id, data) => req('PUT', `/detectors/${id}`, data),
+  deleteDetector: (id) => req('DELETE', `/detectors/${id}`),
 
   // Export
   exportJSON: () => window.open('/api/export/json', '_blank'),

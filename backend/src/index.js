@@ -18,7 +18,6 @@ app.use(express.json({ limit: '10mb' }))
 // Routes
 app.use('/api/settings', require('./routes/settings')(prisma))
 app.use('/api/projects', require('./routes/projects')(prisma))
-app.use('/api/backlog', require('./routes/backlog')(prisma))
 app.use('/api/benchmarks', require('./routes/benchmarks')(prisma))
 app.use('/api/export', require('./routes/export')(prisma))
 app.use('/api/homevalue', require('./routes/homevalue')(prisma))
@@ -27,6 +26,8 @@ app.use('/api/elec', require('./routes/elec')(prisma))
 app.use('/api/manualj', require('./routes/manualj')(prisma))
 app.use('/api/ai', require('./routes/ai')(prisma))
 app.use('/api/nameplates', require('./routes/nameplates')(prisma))
+app.use('/api/contractors', require('./routes/contractors')(prisma))
+app.use('/api/detectors', require('./routes/detectors')(prisma))
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }))
 

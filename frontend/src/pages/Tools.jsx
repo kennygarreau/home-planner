@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { ArrowLeft, Wind, PaintBucket, TrendingUp, Calculator } from 'lucide-react'
+import { ArrowLeft, Wind, PaintBucket, TrendingUp, Calculator, Thermometer } from 'lucide-react'
+import HvacComparison from './HvacComparison'
 
 // ─────────────────────────────────────────────
 // SHARED UI HELPERS
@@ -623,6 +624,15 @@ const TOOLS = [
     component: BreakEven,
     color: 'text-purple-400',
     bg: 'bg-purple-900/20 border-purple-800/30',
+  },
+  {
+    id: 'hvac',
+    label: 'HVAC Comparison',
+    icon: Thermometer,
+    desc: 'Hybrid heat pump vs furnace+AC: solar disposition, payback, stranded export value',
+    component: HvacComparison,
+    color: 'text-orange-400',
+    bg: 'bg-orange-900/20 border-orange-800/30',
   },
 ]
 

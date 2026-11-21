@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, Pencil, Trash2, Search, ChevronDown, ChevronRight, CheckSquare, Square, Clock } from 'lucide-react'
+import { useSearchParams } from 'react-router-dom'
+import { Plus, Pencil, Trash2, Search, ChevronDown, ChevronRight, CheckSquare, Square, Clock, ArrowUpDown, ArrowUpCircle } from 'lucide-react'
 import { api } from '../api'
-import { fmtCurrency, STATUS_COLORS, STATUS_LABELS, PRIORITY_COLORS, PRIORITY_LABELS, STATUS_OPTIONS } from '../utils'
+import { fmtCurrency, STATUS_COLORS, STATUS_LABELS, PRIORITY_COLORS, PRIORITY_LABELS, STATUS_OPTIONS, STATUS_ORDER, PRIORITY_ORDER } from '../utils'
 import ProjectModal from '../components/ProjectModal'
 
 const TASK_STATUS_STYLES = {
@@ -13,6 +14,32 @@ const TASK_STATUS_ICON = {
   pending:       Square,
   'in-progress': Clock,
   done:          CheckSquare,
+}
+
+const SORT_OPTIONS = [
+  { value: 'priority', label: 'Priority' },
+  { value: 'cost-desc', label: 'Cost (high to low)' },
+  { value: 'cost-asc', label: 'Cost (low to high)' },
+  { value: 'name', label: 'Name' },
+  { value: 'newest', label: 'Newest' },
+]
+
+function sortProjects(list, sortBy) {
+  const arr = [...list]
+  switch (sortBy) {
+    case 'priority':
+      return arr.sort((a, b) => PRIORITY_ORDER.indexOf(a.priority) - PRIORITY_ORDER.indexOf(b.priority))
+    case 'cost-desc':
+      return arr.sort((a, b) => (b.estimatedCost || 0) - (a.estimatedCost || 0))
+    case 'cost-asc':
+      return arr.sort((a, b) => (a.estimatedCost || 0) - (b.estimatedCost || 0))
+    case 'name':
+      return arr.sort((a, b) => a.name.localeCompare(b.name))
+    case 'newest':
+      return arr.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+    default:
+      return arr
+  }
 }
 
 function TaskRow({ task, onUpdate, onDelete }) {
@@ -111,7 +138,7 @@ function AddTaskRow({ projectId, onAdd }) {
   )
 }
 
-function ProjectCard({ project, benchmarks, onEdit, onDelete }) {
+function ProjectCard({ project, benchmarks, onEdit, onDelete, onPromote }) {
   const [expanded, setExpanded] = useState(false)
   const [tasks, setTasks] = useState(null)
 
@@ -136,7 +163,7 @@ function ProjectCard({ project, benchmarks, onEdit, onDelete }) {
   const categoryLabel = benchmarks.find(b => b.category === project.category)?.label || project.category
 
   return (
-    <div className="card hover:border-slate-700 transition-colors">
+    <div className="card hover:border-slate-700 transition-colors group">
       {/* Header row — always visible */}
       <div className="flex items-start gap-3 cursor-pointer select-none" onClick={toggleExpand}>
         <div className="text-slate-600 hover:text-slate-400 transition-colors mt-0.5 shrink-0">
@@ -150,6 +177,11 @@ function ProjectCard({ project, benchmarks, onEdit, onDelete }) {
             </div>
             {/* Actions - always visible on mobile, hover on desktop */}
             <div className="flex gap-1 shrink-0 md:opacity-0 md:group-hover:opacity-100" onClick={e => e.stopPropagation()}>
+              {project.status === 'backlog' && (
+                <button title="Promote to planned" className="p-1.5 rounded hover:bg-brand-900/40 text-slate-400 hover:text-brand-400" onClick={() => onPromote(project)}>
+                  <ArrowUpCircle size={13} />
+                </button>
+              )}
               <button className="p-1.5 rounded hover:bg-slate-700 text-slate-400 hover:text-slate-200" onClick={() => onEdit(project)}>
                 <Pencil size={13} />
               </button>
@@ -170,6 +202,9 @@ function ProjectCard({ project, benchmarks, onEdit, onDelete }) {
             {tasks !== null && tasks.length > 0 && (
               <span className="text-xs text-slate-600 font-mono">{doneTasks}/{tasks.length} tasks</span>
             )}
+            {project.contractors?.map(c => (
+              <span key={c.id} className="badge bg-slate-800 text-slate-400 border border-slate-700">{c.name}</span>
+            ))}
           </div>
 
           {/* Cost row */}
@@ -202,17 +237,44 @@ function ProjectCard({ project, benchmarks, onEdit, onDelete }) {
   )
 }
 
+function StatusGroup({ status, projects, benchmarks, collapsed, onToggle, onEdit, onDelete, onPromote }) {
+  if (projects.length === 0) return null
+  const groupCost = projects.reduce((s, p) => s + (p.estimatedCost || 0), 0)
+  return (
+    <div className="mb-4 last:mb-0">
+      <button onClick={onToggle} className="flex items-center gap-2 w-full text-left mb-2 py-1 group/header">
+        {collapsed ? <ChevronRight size={14} className="text-slate-500" /> : <ChevronDown size={14} className="text-slate-500" />}
+        <span className={`badge ${STATUS_COLORS[status]}`}>{STATUS_LABELS[status]}</span>
+        <span className="text-xs text-slate-500">{projects.length} · {fmtCurrency(groupCost)}</span>
+        <span className="flex-1 border-t border-slate-800 ml-2" />
+      </button>
+      {!collapsed && (
+        <div className="space-y-2">
+          {projects.map(p => (
+            <ProjectCard key={p.id} project={p} benchmarks={benchmarks} onEdit={onEdit} onDelete={onDelete} onPromote={onPromote} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function Projects() {
+  const [searchParams] = useSearchParams()
   const [projects, setProjects] = useState([])
   const [benchmarks, setBenchmarks] = useState([])
+  const [contractors, setContractors] = useState([])
   const [modal, setModal] = useState(null)
-  const [search, setSearch] = useState('')
-  const [filterStatus, setFilterStatus] = useState('all')
+  const [search, setSearch] = useState(() => searchParams.get('q') || '')
+  const [filterStatus, setFilterStatus] = useState(() => searchParams.get('status') || 'all')
+  const [filterCategory, setFilterCategory] = useState('all')
+  const [sortBy, setSortBy] = useState('priority')
+  const [collapsedGroups, setCollapsedGroups] = useState(() => new Set(['done']))
   const [loading, setLoading] = useState(true)
 
   const load = () =>
-    Promise.all([api.getProjects(), api.getBenchmarks()])
-      .then(([p, b]) => { setProjects(p); setBenchmarks(b) })
+    Promise.all([api.getProjects(), api.getBenchmarks(), api.getContractors()])
+      .then(([p, b, c]) => { setProjects(p); setBenchmarks(b); setContractors(c) })
       .finally(() => setLoading(false))
 
   useEffect(() => { load() }, [])
@@ -230,16 +292,42 @@ export default function Projects() {
     load()
   }
 
+  const handlePromote = async (project) => {
+    await api.updateProject(project.id, {
+      ...project,
+      status: 'planned',
+      contractorIds: project.contractors?.map(c => c.id) || [],
+    })
+    load()
+  }
+
+  const toggleGroup = (status) => setCollapsedGroups(prev => {
+    const next = new Set(prev)
+    next.has(status) ? next.delete(status) : next.add(status)
+    return next
+  })
+
+  const categories = [...new Set(projects.map(p => p.category))]
+  const categoryLabel = (cat) => benchmarks.find(b => b.category === cat)?.label || cat
+
   const filtered = projects
     .filter(p => filterStatus === 'all' || p.status === filterStatus)
+    .filter(p => filterCategory === 'all' || p.category === filterCategory)
     .filter(p => !search || p.name.toLowerCase().includes(search.toLowerCase()))
+
+  const active = projects.filter(p => p.status !== 'done' && p.status !== 'backlog')
+  const done = projects.filter(p => p.status === 'done')
+  const totalEstimated = active.reduce((s, p) => s + (p.estimatedCost || 0), 0)
+  const totalActual = done.reduce((s, p) => s + (p.actualCost || 0), 0)
 
   return (
     <div className="p-4 md:p-8">
       <div className="flex items-center justify-between mb-4 md:mb-6">
         <div>
           <h1 className="page-title">Projects</h1>
-          <p className="text-sm text-slate-500 mt-1">{projects.length} total · tap to expand tasks</p>
+          <p className="text-sm text-slate-500 mt-1">
+            {projects.length} total · {active.length} active ({fmtCurrency(totalEstimated)} pipeline) · {done.length} done ({fmtCurrency(totalActual)} spent)
+          </p>
         </div>
         <button className="btn-primary" onClick={() => setModal('new')}>
           <Plus size={15} /> <span className="hidden sm:inline">New Project</span><span className="sm:hidden">New</span>
@@ -252,9 +340,21 @@ export default function Projects() {
           <input className="input pl-9" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search…" />
         </div>
         <select className="input w-auto" value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
-          <option value="all">All</option>
+          <option value="all">All statuses</option>
           {STATUS_OPTIONS.map(s => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
         </select>
+        {categories.length > 1 && (
+          <select className="input w-auto" value={filterCategory} onChange={e => setFilterCategory(e.target.value)}>
+            <option value="all">All categories</option>
+            {categories.map(c => <option key={c} value={c}>{categoryLabel(c)}</option>)}
+          </select>
+        )}
+        <div className="relative">
+          <ArrowUpDown size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+          <select className="input w-auto pl-8" value={sortBy} onChange={e => setSortBy(e.target.value)}>
+            {SORT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        </div>
       </div>
 
       {loading ? (
@@ -263,19 +363,33 @@ export default function Projects() {
         <div className="card text-center py-16">
           <p className="text-slate-500">No projects yet — add your first one!</p>
         </div>
-      ) : (
-        <div className="space-y-2 group">
-          {filtered.map(p => (
-            <ProjectCard key={p.id} project={p} benchmarks={benchmarks} onEdit={setModal} onDelete={handleDelete} />
+      ) : filterStatus !== 'all' ? (
+        <div className="space-y-2">
+          {sortProjects(filtered, sortBy).map(p => (
+            <ProjectCard key={p.id} project={p} benchmarks={benchmarks} onEdit={setModal} onDelete={handleDelete} onPromote={handlePromote} />
           ))}
         </div>
+      ) : (
+        STATUS_ORDER.map(status => (
+          <StatusGroup
+            key={status}
+            status={status}
+            projects={sortProjects(filtered.filter(p => p.status === status), sortBy)}
+            benchmarks={benchmarks}
+            collapsed={collapsedGroups.has(status)}
+            onToggle={() => toggleGroup(status)}
+            onEdit={setModal}
+            onDelete={handleDelete}
+            onPromote={handlePromote}
+          />
+        ))
       )}
 
       {modal && (
         <ProjectModal
           item={modal === 'new' ? null : modal}
           benchmarks={benchmarks}
-          isBacklog={false}
+          contractors={contractors}
           onSave={handleSave}
           onClose={() => setModal(null)}
         />

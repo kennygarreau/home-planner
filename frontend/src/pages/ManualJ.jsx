@@ -14,11 +14,11 @@ const CITY_PRESETS = [
   ['Boston MA',       [9,  70, 91,  75, 65]],
   ['Chicago IL',      [-5, 70, 91,  75, 68]],
   ['New York NY',     [14, 70, 92,  75, 66]],
-  ['Minneapolis MN',  [-15,70, 88,  75, 60]],
-  ['Washington DC',   [18, 70, 92,  75, 70]],
-  ['Atlanta GA',      [26, 70, 93,  75, 77]],
+  ['Minneapolis MN',  [-15,70, 88,  75, 84]],
+  ['Washington DC',   [18, 70, 93,  75, 95]],
+  ['Atlanta GA',      [19, 70, 94,  75, 87]],
   ['Dallas TX',       [25, 70, 99,  75, 78]],
-  ['Phoenix AZ',      [37, 70, 108, 75, 32]],
+  ['Phoenix AZ',      [34, 70, 108, 75, 32]],
   ['Seattle WA',      [28, 70, 85,  75, 55]],
 ]
 
@@ -28,8 +28,11 @@ function mkZone(name, fa, wa, ca, occ, fCap, aCap) {
   return {
     name, floor_area: fa, ceiling_height: 9, wall_area: wa, ceiling_area: ca,
     floor_uncond: 0, bg_wall_area: 0, r_wall: 15, r_ceiling: 38, r_floor: 19, r_bg_wall: 0,
-    window_area: Math.round(fa * 0.12), window_u: 0.30, window_shgc: 0.25,
-    south_window: Math.round(fa * 0.04), door_area: 40, door_type: 'insulated',
+    north_window: Math.round(fa * 0.024), south_window: Math.round(fa * 0.036),
+    east_window:  Math.round(fa * 0.030), west_window:  Math.round(fa * 0.030),
+    window_u: 0.30, window_shgc: 0.25,
+    roof_type: 'medium',
+    door_area: 40, door_type: 'insulated',
     infiltration: 'average', custom_ach: 7, vent_cfm: 0, ventilation: 'none',
     occupants: occ, lighting: 0.8, appliances: 800,
     furnace_cap: fCap, ac_cap: aCap, duct_location: 'attic', duct_leakage: 'average',
@@ -56,36 +59,44 @@ function calcZone(z, cl) {
   const uBG = z.r_bg_wall > 0 ? 1 / z.r_bg_wall : 0
   const uD  = 1 / ({ solid_wood: 2, insulated: 5, fiberglass: 7 }[z.door_type] || 5)
   const ach50  = ({ tight: 2, average: 7, loose: 15, very_loose: 25, custom: z.custom_ach }[z.infiltration] || 7)
-  const airCFM = (ach50 / 18 * z.floor_area * z.ceiling_height) / 60
+  const airCFM = (ach50 / 15 * z.floor_area * z.ceiling_height) / 60
   const vEff   = z.ventilation === 'balanced' ? 0.25 : 1.0
+
+  // Oriented window areas; fall back to legacy window_area if directional fields absent
+  const nW = z.north_window ?? 0
+  const sW = z.south_window ?? 0
+  const eW = z.east_window  ?? 0
+  const wW = z.west_window  ?? 0
+  const totalWin = (nW + sW + eW + wW) > 0 ? (nW + sW + eW + wW) : (z.window_area ?? 0)
 
   const HW      = uW * z.wall_area * hDT
   const HC      = uC * z.ceiling_area * hDT
-  const HWin    = z.window_u * z.window_area * hDT
+  const HWin    = z.window_u * totalWin * hDT
   const HD      = uD * z.door_area * hDT
   const HF      = z.floor_uncond > 0 ? uF * z.floor_uncond * hDT * 0.65 : 0
   const HBG     = uBG * z.bg_wall_area * (cl.heat_indoor - 52)
   const HInf    = 1.1 * airCFM * hDT
   const HVent   = 1.1 * z.vent_cfm * hDT * vEff
-  const solCredit = z.south_window * z.window_shgc * 55 * 0.30
-  const dMH     = z.duct_location === 'conditioned' ? 1.0 : z.duct_leakage === 'tight' ? 1.06 : z.duct_leakage === 'average' ? 1.13 : 1.22
+  const solCredit = sW * z.window_shgc * 55 * 0.30
+  const dMH     = z.duct_location === 'conditioned' ? 1.0 : z.duct_leakage === 'tight' ? 1.10 : z.duct_leakage === 'average' ? 1.20 : 1.30
   const HR      = HW + HC + HWin + HD + HF + HBG + HInf + HVent
   const HDuct   = HR * (dMH - 1)
-  const HEAT    = Math.max(8000, Math.round((HR - solCredit + HDuct) / 500) * 500)
+  const HEAT    = Math.round((HR - solCredit + HDuct) / 500) * 500
 
   const CW    = uW * z.wall_area * cDT * 1.15
-  const CC    = uC * z.ceiling_area * (cDT + 18)
-  const CWc   = z.window_u * z.window_area * cDT
+  const roofPenalty = ({ dark: 25, medium: 18, light: 8, solar: 10 }[z.roof_type] ?? 18)
+  const CC    = uC * z.ceiling_area * (cDT + roofPenalty)
+  const CWc   = z.window_u * totalWin * cDT
   const CDoor = uD * z.door_area * cDT
-  const CSol  = z.window_area * z.window_shgc * 125 * 0.60
+  const CSol  = z.window_shgc * (nW * 25 + sW * 35 + eW * 150 + wW * 150)
   const CIs   = 1.1 * airCFM * cDT
-  const CIl   = 0.68 * airCFM * Math.max(0, cl.grains - 60)
+  const CIl   = 0.68 * airCFM * Math.max(0, cl.grains - 65)
   const CVs   = 1.1 * z.vent_cfm * cDT * vEff
-  const CVl   = 0.68 * z.vent_cfm * Math.max(0, cl.grains - 60) * vEff
+  const CVl   = 0.68 * z.vent_cfm * Math.max(0, cl.grains - 65) * vEff
   const CPpl  = z.occupants * 250
   const CPplL = z.occupants * 200
   const CLgt  = z.lighting * z.floor_area * 3.41
-  const dMC   = z.duct_location === 'conditioned' ? 1.0 : z.duct_leakage === 'tight' ? 1.08 : z.duct_leakage === 'average' ? 1.16 : 1.26
+  const dMC   = z.duct_location === 'conditioned' ? 1.0 : z.duct_leakage === 'tight' ? 1.12 : z.duct_leakage === 'average' ? 1.22 : 1.35
   const CSens = CW + CC + CWc + CDoor + CSol + CIs + CVs + CPpl + CLgt + z.appliances
   const CLat  = CIl + CVl + CPplL
   const CDuct = CSens * (dMC - 1)
@@ -168,13 +179,17 @@ function StepHeader({ tag, title, desc }) {
 // ─────────────────────────────────────────────
 // RESULTS HELPERS
 // ─────────────────────────────────────────────
-function Verdict({ ratio, name, icon }) {
+function Verdict({ ratio, name, icon, type = 'heat' }) {
+  const goodMax = type === 'cool' ? 1.20 : 1.40
+  const warnMax = type === 'cool' ? 1.40 : 1.80
   const [cls, text] = ratio < 0.9
     ? ['bg-red-950/30 border-red-800/40 text-red-400',   `may be undersized (${ratio.toFixed(2)}× load).`]
-    : ratio <= 1.35
+    : ratio <= goodMax
     ? ['bg-teal-950/30 border-teal-800/40 text-teal-400', `is well-sized (${ratio.toFixed(2)}× load).`]
-    : ratio <= 1.8
-    ? ['bg-amber-950/30 border-amber-800/40 text-amber-400', `is slightly oversized (${ratio.toFixed(2)}× load) — watch for short cycling.`]
+    : ratio <= warnMax
+    ? ['bg-amber-950/30 border-amber-800/40 text-amber-400',
+       type === 'cool' ? `is slightly oversized (${ratio.toFixed(2)}× load) — may reduce humidity removal.`
+                       : `is slightly oversized (${ratio.toFixed(2)}× load) — watch for short cycling.`]
     : ['bg-red-950/30 border-red-800/40 text-red-400',   `is significantly oversized (${ratio.toFixed(2)}× load) — likely causing short cycling.`]
   return (
     <div className={`rounded-lg border px-4 py-3 text-xs mb-2 ${cls}`}>
@@ -186,7 +201,7 @@ function Verdict({ ratio, name, icon }) {
 function LivePanel({ zone, climate }) {
   const r  = calcZone(zone, climate)
   const hR = zone.furnace_cap / r.HEAT
-  const vCls = hR <= 1.35
+  const vCls = hR <= 1.40
     ? 'bg-teal-950/30 border-teal-800/40 text-teal-400'
     : hR <= 1.8
     ? 'bg-amber-950/30 border-amber-800/40 text-amber-400'
@@ -206,7 +221,7 @@ function LivePanel({ zone, climate }) {
       <div className="bg-slate-800/50 border border-slate-700/50 rounded-lg p-3">
         <div className="text-xs font-mono uppercase tracking-wider text-slate-500 mb-1">BTU / ft²</div>
         <div className="font-display text-2xl text-slate-200">{Math.round(r.HEAT / Math.max(zone.floor_area, 1))}</div>
-        <div className="text-xs text-slate-500">heating (target: 20–50)</div>
+        <div className="text-xs text-slate-500">heating (modern: 12–20 · typical: 20–35 · older: 30–50)</div>
       </div>
       <div className={`rounded-lg border px-3 py-2 text-xs ${vCls}`}>
         Furnace ratio: {hR.toFixed(2)}× load
@@ -249,8 +264,8 @@ function FullResults({ zone, climate, onBack, onPrint }) {
           <div className="text-xs text-slate-500 mt-1">{(r.COOL / 12000).toFixed(1)} tons · SHR {r.SHR}</div>
         </div>
       </div>
-      <Verdict ratio={hR} name="Furnace" icon="🔥" />
-      <Verdict ratio={cR} name="AC / Cooling" icon="❄️" />
+      <Verdict ratio={hR} name="Furnace" icon="🔥" type="heat" />
+      <Verdict ratio={cR} name="AC / Cooling" icon="❄️" type="cool" />
       <div className="bg-slate-800/50 border border-slate-700/50 rounded-xl overflow-hidden">
         <div className="px-4 py-2.5 border-b border-slate-700/50 text-xs font-mono uppercase tracking-wider text-slate-500">Equipment Comparison</div>
         {[
@@ -372,7 +387,17 @@ function EnvelopeStep({ zone, onChange, onBack, onNext }) {
         <strong>Wall area</strong> = perimeter × ceiling height minus windows/doors.
         R-values are on insulation packaging (R-13, R-38, etc.).
       </Explainer>
+      <Explainer type="warn">
+        <strong>Defaults assume a well-insulated modern home (2010+).</strong> For an older home, select lower R-values (R-11 walls, R-19–30 ceiling), a higher window U-factor (U=0.48 clear double-pane or U=0.65 single-pane), and looser infiltration — or your load will be significantly underestimated.
+      </Explainer>
       <SubTitle>Geometry</SubTitle>
+      <Explainer>
+        <strong>Multi-level zone example</strong> — basement (750 ft²) + main floor above it (750 ft²), no attic above the main floor:
+        set <strong>Floor Area = 1,500 ft²</strong>, <strong>Ceiling Height = 8 ft</strong> (one floor's height — the volume math stays correct),
+        <strong>Ceiling Area = 0</strong> (interior ceiling, not exposed to outside),
+        <strong>Floor Over Uncond. = 0</strong> (main floor is over the conditioned basement),
+        above-grade wall area from <em>both</em> floors combined, and below-grade wall area for the buried portion of the basement walls.
+      </Explainer>
       <FGrid cols={3}>
         <Field label="Floor Area (ft²)">
           <input className="input" type="number" value={zone.floor_area} onChange={e => set('floor_area', +e.target.value)} />
@@ -383,13 +408,13 @@ function EnvelopeStep({ zone, onChange, onBack, onNext }) {
         <Field label="Wall Area (ft²)" hint="Perimeter×ht minus openings">
           <input className="input" type="number" value={zone.wall_area} onChange={e => set('wall_area', +e.target.value)} />
         </Field>
-        <Field label="Ceiling Area (ft²)" hint="Top-floor footprint">
+        <Field label="Ceiling Area (ft²)" hint="Only the ceiling exposed to attic or outside — 0 if another floor sits above this zone. 1-story top floor: equals floor area. 2-story top floor: equals floor area ÷ 2.">
           <input className="input" type="number" value={zone.ceiling_area} onChange={e => set('ceiling_area', +e.target.value)} />
         </Field>
-        <Field label="Floor Over Uncond. (ft²)" hint="0 if slab/cond. basement">
+        <Field label="Floor Over Uncond. (ft²)" hint="Area of floor directly above an unconditioned crawlspace or garage. 0 for slab-on-grade or floor over a conditioned basement.">
           <input className="input" type="number" value={zone.floor_uncond} onChange={e => set('floor_uncond', +e.target.value)} />
         </Field>
-        <Field label="Below-Grade Wall (ft²)" hint="Basement walls below grade">
+        <Field label="Below-Grade Wall (ft²)" hint="Basement wall area that is below the exterior grade line. Calculated against ground temp (~52°F), not outdoor design temp — so the loss is far lower than above-grade walls. Enter perimeter × depth below grade.">
           <input className="input" type="number" value={zone.bg_wall_area} onChange={e => set('bg_wall_area', +e.target.value)} />
         </Field>
       </FGrid>
@@ -416,6 +441,22 @@ function EnvelopeStep({ zone, onChange, onBack, onNext }) {
           </select>
         </Field>
       </FGrid>
+      <SubTitle>Roof Surface</SubTitle>
+      <Explainer>
+        Roof color raises the effective summer ceiling temperature beyond the outdoor design temp.
+        Solar panels shade the roof membrane, reducing heat flux by ~38% vs. an exposed dark roof —
+        treat as similar to a light cool roof for sizing purposes.
+      </Explainer>
+      <FGrid cols={1}>
+        <Field label="Roof / Ceiling Type" hint="Affects summer cooling load only — not heating">
+          <select className="input" value={zone.roof_type || 'medium'} onChange={e => set('roof_type', e.target.value)}>
+            <option value="dark">Dark shingles / slate / dark tile (+25°F solar penalty)</option>
+            <option value="medium">Medium — typical asphalt shingles (+18°F, default)</option>
+            <option value="light">Light / cool roof coating / white membrane (+8°F)</option>
+            <option value="solar">Solar panels covering roof (+10°F — panels shade membrane)</option>
+          </select>
+        </Field>
+      </FGrid>
       <StepNav onBack={onBack} onNext={onNext} nextLabel="Next: Windows →" />
     </div>
   )
@@ -423,27 +464,38 @@ function EnvelopeStep({ zone, onChange, onBack, onNext }) {
 
 function WindowsStep({ zone, onChange, onBack, onNext }) {
   const set = (k, v) => onChange({ ...zone, [k]: v })
+  const totalWin = (zone.north_window ?? 0) + (zone.south_window ?? 0) + (zone.east_window ?? 0) + (zone.west_window ?? 0)
   return (
     <div className="space-y-2 max-w-2xl">
       <Explainer>
         <strong>Window U-factor</strong> is on the NFRC/ENERGY STAR label.
         Single pane≈1.0, double low-e≈0.28–0.35, triple≈0.15–0.22.
+        East/west glass drives 4–5× more summer solar gain than south-facing glass.
       </Explainer>
-      <SubTitle>Windows</SubTitle>
+      <SubTitle>Windows — Glass Properties</SubTitle>
       <FGrid>
         <Field label="Window Type">
           <select className="input" value={zone.window_u} onChange={e => set('window_u', +e.target.value)}>
             {[['Single pane, alum (U=1.10)',1.1],['Single pane, wood (U=0.65)',0.65],['Dbl pane, clear (U=0.48)',0.48],['Dbl pane, low-e (U=0.30)',0.30],['Dbl pane, low-e argon (U=0.25)',0.25],['Triple pane (U=0.18)',0.18]].map(([l,v]) => <option key={v} value={v}>{l}</option>)}
           </select>
         </Field>
-        <Field label="Total Window Area (ft²)">
-          <input className="input" type="number" value={zone.window_area} onChange={e => set('window_area', +e.target.value)} />
-        </Field>
         <Field label="SHGC" hint="Low-e≈0.20–0.30 · Clear≈0.60">
           <input className="input" type="number" step="0.01" value={zone.window_shgc} onChange={e => set('window_shgc', +e.target.value)} />
         </Field>
-        <Field label="South-Facing (ft²)" hint="Gets winter solar credit">
-          <input className="input" type="number" value={zone.south_window} onChange={e => set('south_window', +e.target.value)} />
+      </FGrid>
+      <SubTitle>Windows — Area by Orientation (ft²) · Total: {totalWin} ft²</SubTitle>
+      <FGrid>
+        <Field label="North-facing (ft²)" hint="Diffuse only — minimal solar gain">
+          <input className="input" type="number" value={zone.north_window ?? 0} onChange={e => set('north_window', +e.target.value)} />
+        </Field>
+        <Field label="South-facing (ft²)" hint="Best for winter solar credit, low summer gain">
+          <input className="input" type="number" value={zone.south_window ?? 0} onChange={e => set('south_window', +e.target.value)} />
+        </Field>
+        <Field label="East-facing (ft²)" hint="High summer solar — morning peak load">
+          <input className="input" type="number" value={zone.east_window ?? 0} onChange={e => set('east_window', +e.target.value)} />
+        </Field>
+        <Field label="West-facing (ft²)" hint="High summer solar — afternoon peak load">
+          <input className="input" type="number" value={zone.west_window ?? 0} onChange={e => set('west_window', +e.target.value)} />
         </Field>
       </FGrid>
       <SubTitle>Doors</SubTitle>
@@ -601,7 +653,7 @@ function SummaryStep({ zones, climate, onBack, onPrint }) {
             {results.map(({ z, r }, i) => {
               const col = ZONE_COLORS[i % ZONE_COLORS.length]
               const hR  = (z.furnace_cap / r.HEAT).toFixed(2)
-              const hCls = parseFloat(hR) <= 1.35 ? 'text-teal-400' : parseFloat(hR) <= 1.8 ? 'text-amber-400' : 'text-red-400'
+              const hCls = parseFloat(hR) <= 1.40 ? 'text-teal-400' : parseFloat(hR) <= 1.8 ? 'text-amber-400' : 'text-red-400'
               return (
                 <tr key={i} className="border-b border-slate-800/50">
                   <td className="px-4 py-2.5">
@@ -644,8 +696,8 @@ function SummaryStep({ zones, climate, onBack, onPrint }) {
         </div>
       </div>
       <Explainer>
-        <strong>Sizing note:</strong> Ratios above 1.5× indicate oversizing. Short cycling (5–10 min cycles) at mild temps
-        is a classic signature. Ideal ratio: 1.0–1.35×.
+        <strong>Sizing note:</strong> Per ACCA Manual S — furnaces: ≤1.40× is acceptable; AC: ≤1.20× is preferred.
+        Oversized cooling causes short cycling and poor dehumidification.
       </Explainer>
       <StepNav onBack={onBack} onNext={onPrint} nextLabel="🖨 Print All" />
     </div>
@@ -674,6 +726,10 @@ export default function ManualJ() {
     ? z => setWholeZone(z)
     : z => setZones(zs => zs.map((old, i) => i === currentZone ? z : old))
 
+  const sortedZones = zones
+    .map((z, i) => ({ z, i }))
+    .sort((a, b) => a.z.name.localeCompare(b.z.name))
+
   function goStep(n) { setStep(n); setHighWater(h => Math.max(h, n)); setMenuOpen(false) }
 
   function switchMode(m) { setMode(m); setStep(0); setHighWater(0) }
@@ -685,6 +741,7 @@ export default function ManualJ() {
   }
   function removeZone(i) {
     if (zones.length <= 1) return
+    if (!confirm(`Remove "${zones[i].name}"? This cannot be undone.`)) return
     setZones(zs => zs.filter((_, idx) => idx !== i))
     setCurrentZone(c => Math.min(c, zones.length - 2))
   }
@@ -734,8 +791,16 @@ export default function ManualJ() {
       const labels = { tight: 'Tight', average: 'Average', loose: 'Loose', very_loose: 'Very loose' }
       return `${labels[z.infiltration] || z.infiltration} (≈${ach50Map[z.infiltration]} ACH50)`
     }
-    function sizeCls(r) { return r < 0.9 ? 'over' : r <= 1.35 ? 'good' : r <= 1.8 ? 'warn' : 'over' }
-    function sizeTxt(r) { return r < 0.9 ? 'Undersized' : r <= 1.35 ? 'Well-sized' : r <= 1.8 ? 'Slightly oversized' : 'Significantly oversized' }
+    function sizeCls(r, type) {
+      const goodMax = type === 'cool' ? 1.20 : 1.40
+      const warnMax = type === 'cool' ? 1.40 : 1.80
+      return r < 0.9 ? 'over' : r <= goodMax ? 'good' : r <= warnMax ? 'warn' : 'over'
+    }
+    function sizeTxt(r, type) {
+      const goodMax = type === 'cool' ? 1.20 : 1.40
+      const warnMax = type === 'cool' ? 1.40 : 1.80
+      return r < 0.9 ? 'Undersized' : r <= goodMax ? 'Well-sized' : r <= warnMax ? 'Slightly oversized' : 'Significantly oversized'
+    }
 
     function zoneInputs(z) {
       return `
@@ -749,11 +814,13 @@ export default function ManualJ() {
           </tr></tbody>
         </table>
         <table>
-          <thead><tr><th>Wall R</th><th>Ceiling R</th><th>Floor R</th><th>BG Wall R</th><th>Window U</th><th>Window Area</th><th>SHGC</th><th>South-Facing</th></tr></thead>
+          <thead><tr><th>Wall R</th><th>Ceiling R</th><th>Floor R</th><th>BG Wall R</th><th>Roof Type</th><th>Window U</th><th>SHGC</th><th>N</th><th>S</th><th>E</th><th>W</th></tr></thead>
           <tbody><tr>
             <td>R-${z.r_wall}</td><td>R-${z.r_ceiling}</td><td>R-${z.r_floor}</td>
             <td>${z.r_bg_wall > 0 ? 'R-' + z.r_bg_wall : '—'}</td>
-            <td>U-${z.window_u}</td><td>${z.window_area} ft²</td><td>${z.window_shgc}</td><td>${z.south_window} ft²</td>
+            <td>${({dark:'Dark',medium:'Medium',light:'Light/cool',solar:'Solar panels'}[z.roof_type]||'Medium')}</td>
+            <td>U-${z.window_u}</td><td>${z.window_shgc}</td>
+            <td>${z.north_window ?? 0} ft²</td><td>${z.south_window ?? 0} ft²</td><td>${z.east_window ?? 0} ft²</td><td>${z.west_window ?? 0} ft²</td>
           </tr></tbody>
         </table>
         <table>
@@ -815,16 +882,16 @@ export default function ManualJ() {
               <td>Furnace (heating)</td>
               <td>${fmt(r.HEAT)} BTU/hr</td><td>${fmt(r.recH)} BTU/hr</td>
               <td>${fmt(z.furnace_cap)} BTU/hr</td>
-              <td class="${sizeCls(hR)}">${hR.toFixed(2)}×</td>
-              <td class="${sizeCls(hR)}">${sizeTxt(hR)}</td>
+              <td class="${sizeCls(hR,'heat')}">${hR.toFixed(2)}×</td>
+              <td class="${sizeCls(hR,'heat')}">${sizeTxt(hR,'heat')}</td>
             </tr>
             <tr>
               <td>AC / Cooling</td>
               <td>${fmt(r.COOL)} BTU/hr (${(r.COOL / 12000).toFixed(1)}T)</td>
               <td>${fmt(r.recC)} BTU/hr (${(r.recC / 12000).toFixed(1)}T)</td>
               <td>${fmt(z.ac_cap)} BTU/hr (${(z.ac_cap / 12000).toFixed(1)}T)</td>
-              <td class="${sizeCls(cR)}">${cR.toFixed(2)}×</td>
-              <td class="${sizeCls(cR)}">${sizeTxt(cR)}</td>
+              <td class="${sizeCls(cR,'cool')}">${cR.toFixed(2)}×</td>
+              <td class="${sizeCls(cR,'cool')}">${sizeTxt(cR,'cool')}</td>
             </tr>
           </tbody>
         </table>
@@ -858,7 +925,7 @@ export default function ManualJ() {
                 <td>${z.name}</td><td>${z.floor_area.toLocaleString()}</td>
                 <td>${fmt(r.HEAT)}</td><td>${Math.round(r.HEAT / z.floor_area)}</td>
                 <td>${(r.COOL / 12000).toFixed(1)}T</td>
-                <td class="${sizeCls(hR)}">${(z.furnace_cap / 1000).toFixed(0)}k (${hR.toFixed(2)}×)</td>
+                <td class="${sizeCls(hR,'heat')}">${(z.furnace_cap / 1000).toFixed(0)}k (${hR.toFixed(2)}×)</td>
                 <td>${(z.ac_cap / 12000).toFixed(1)}T</td>
               </tr>`
             }).join('')}
@@ -926,7 +993,8 @@ export default function ManualJ() {
       Results are suitable for planning and preliminary equipment sizing only. A certified Manual J calculation by a licensed HVAC contractor
       or mechanical engineer is required before purchasing equipment, applying for permits, or installing HVAC systems.
       Solar credit: south-facing glazing at 55 BTU/hr·ft²·SHGC×30% (heating) and 125 BTU/hr·ft²·SHGC×60% (cooling).
-      Duct loss multipliers per ACCA Manual J Table 7A. Infiltration via ACH50 ÷ 18 rule-of-thumb.
+      Duct loss multipliers per ACCA Manual J Table 7A (heating: 10/20/30%; cooling: 12/22/35% for tight/average/leaky attic ducts).
+      Infiltration via ACH50 ÷ 15 (LBL/ASHRAE n-factor, single-to-two-story residential).
     </div>
     <div class="footer">Generated by Home Planner &nbsp;|&nbsp; ${date}</div>
     </body></html>`
@@ -1070,7 +1138,7 @@ export default function ManualJ() {
             {mode === 'zones' && step < 7 && (
               <>
                 <div className="flex items-center gap-2 mb-4 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
-                  {zones.map((z, i) => (
+                  {sortedZones.map(({ z, i }) => (
                     <button key={i} onClick={() => setCurrentZone(i)}
                       className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-mono border transition-all whitespace-nowrap shrink-0 ${
                         i === currentZone

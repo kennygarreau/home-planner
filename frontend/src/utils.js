@@ -13,10 +13,13 @@ export const fmtMonthYear = (d) => {
   return new Date(d).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
 }
 
-export const STATUS_OPTIONS = ['planned', 'in-progress', 'done', 'on-hold']
+export const STATUS_OPTIONS = ['backlog', 'planned', 'in-progress', 'on-hold', 'done']
 export const PRIORITY_OPTIONS = ['low', 'medium', 'high', 'critical']
+export const PRIORITY_ORDER = ['critical', 'high', 'medium', 'low']
+export const STATUS_ORDER = ['in-progress', 'planned', 'on-hold', 'backlog', 'done']
 
 export const STATUS_LABELS = {
+  backlog: 'Backlog',
   planned: 'Planned',
   'in-progress': 'In Progress',
   done: 'Done',
@@ -31,6 +34,7 @@ export const PRIORITY_LABELS = {
 }
 
 export const STATUS_COLORS = {
+  backlog: 'bg-purple-900/50 text-purple-300 border border-purple-800/50',
   planned: 'bg-blue-900/50 text-blue-300 border border-blue-800/50',
   'in-progress': 'bg-yellow-900/50 text-yellow-300 border border-yellow-800/50',
   done: 'bg-green-900/50 text-green-300 border border-green-800/50',

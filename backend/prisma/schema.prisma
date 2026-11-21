@@ -28,20 +28,23 @@ model Project {
   notes           String   @default("")
   priority        String   @default("medium")
   tasks           Task[]
+  contractors     Contractor[]
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 }
 
-model BacklogItem {
-  id            String   @id @default(cuid())
-  name          String
-  category      String
-  estimatedCost Float    @default(0)
-  roiBenchmark  Float    @default(0)
-  priority      String   @default("medium")
-  notes         String   @default("")
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+model Contractor {
+  id        String    @id @default(cuid())
+  name      String
+  company   String    @default("")
+  trade     String    @default("")
+  phone     String    @default("")
+  email     String    @default("")
+  website   String    @default("")
+  notes     String    @default("")
+  projects  Project[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 }
 
 model RoiBenchmark {
@@ -92,6 +95,18 @@ model ManualJScenario {
   step        Int      @default(0)
   currentZone Int      @default(0)
   updatedAt   DateTime @updatedAt
+}
+
+model Detector {
+  id            String    @id @default(cuid())
+  type          String    @default("smoke")
+  location      String
+  installedAt   DateTime?
+  replaceByDate DateTime?
+  batteryType   String    @default("")
+  notes         String    @default("")
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 }
 
 model NameplateImage {

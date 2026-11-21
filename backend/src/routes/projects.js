@@ -5,7 +5,7 @@ module.exports = (prisma) => {
 
   router.get('/', async (req, res) => {
     try {
-      const projects = await prisma.project.findMany({ orderBy: { createdAt: 'desc' } })
+      const projects = await prisma.project.findMany({ orderBy: { createdAt: 'desc' }, include: { contractors: true } })
       res.json(projects)
     } catch (e) {
       res.status(500).json({ error: e.message })
@@ -14,7 +14,7 @@ module.exports = (prisma) => {
 
   router.get('/:id', async (req, res) => {
     try {
-      const project = await prisma.project.findUnique({ where: { id: req.params.id } })
+      const project = await prisma.project.findUnique({ where: { id: req.params.id }, include: { contractors: true } })
       if (!project) return res.status(404).json({ error: 'Not found' })
       res.json(project)
     } catch (e) {
@@ -24,7 +24,7 @@ module.exports = (prisma) => {
 
   router.post('/', async (req, res) => {
     try {
-      const { name, category, status, estimatedCost, actualCost, roiBenchmark, scheduledStart, scheduledEnd, notes, priority } = req.body
+      const { name, category, status, estimatedCost, actualCost, roiBenchmark, scheduledStart, scheduledEnd, notes, priority, contractorIds } = req.body
       const project = await prisma.project.create({
         data: {
           name,
@@ -37,7 +37,9 @@ module.exports = (prisma) => {
           scheduledEnd: scheduledEnd ? new Date(scheduledEnd) : null,
           notes: notes || '',
           priority: priority || 'medium',
-        }
+          contractors: { connect: (contractorIds || []).map(id => ({ id })) },
+        },
+        include: { contractors: true },
       })
       res.status(201).json(project)
     } catch (e) {
@@ -47,7 +49,7 @@ module.exports = (prisma) => {
 
   router.put('/:id', async (req, res) => {
     try {
-      const { name, category, status, estimatedCost, actualCost, roiBenchmark, scheduledStart, scheduledEnd, notes, priority } = req.body
+      const { name, category, status, estimatedCost, actualCost, roiBenchmark, scheduledStart, scheduledEnd, notes, priority, contractorIds } = req.body
       const project = await prisma.project.update({
         where: { id: req.params.id },
         data: {
@@ -61,7 +63,9 @@ module.exports = (prisma) => {
           scheduledEnd: scheduledEnd ? new Date(scheduledEnd) : null,
           notes: notes || '',
           priority: priority || 'medium',
-        }
+          contractors: { set: (contractorIds || []).map(id => ({ id })) },
+        },
+        include: { contractors: true },
       })
       res.json(project)
     } catch (e) {
