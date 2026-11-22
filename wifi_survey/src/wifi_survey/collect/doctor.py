@@ -21,6 +21,7 @@ from wifi_survey.collect.wifi import (
     parse_iw_reg,
     parse_iw_scan_dump,
     parse_nmcli_wifi_list,
+    parse_power_save,
 )
 from wifi_survey.config import SurveyConfig
 
@@ -179,6 +180,17 @@ def run_doctor(
         )
     else:
         add("Connected", "fail", "not connected to Wi-Fi", "Connect to the network you want to survey")
+
+    ps = parse_power_save(runner.run(["iw", "dev", iface, "get", "power_save"]).stdout)
+    if ps is True:
+        add(
+            "Wi-Fi power saving",
+            "warn",
+            "on — adds tens of ms to latency readings",
+            f"For the survey: sudo iw dev {iface} set power_save off  (reverts on reboot)",
+        )
+    elif ps is False:
+        add("Wi-Fi power saving", "pass", "off")
 
     # ── Scanning without root ────────────────────────────────────────────────
     dump = runner.run(["iw", "dev", iface, "scan", "dump"])

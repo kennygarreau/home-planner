@@ -124,3 +124,9 @@ def test_cancel_stops_before_throughput(fixture_text):
     with pytest.raises(Cancelled):
         measure_point(JOB, cfg(), r, IF, lambda s, m: s != "download", sleep=lambda s: None)
     assert not any(c[0] == "iperf3" for c in r.calls)
+
+
+def test_power_save_on_is_flagged(fixture_text):
+    r = runner(fixture_text, {("iw", "dev", IF, "get", "power_save"): "Power save: on\n"})
+    rec = measure_point(JOB, cfg(), r, IF, lambda s, m: True, sleep=lambda s: None)
+    assert any("power saving" in w for w in rec["warnings"])

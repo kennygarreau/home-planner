@@ -20,7 +20,15 @@ BSS aa:bb:cc:11:22:34(on wlan0)
 
 def test_redacts_everything_sensitive():
     out = Redactor().text(SCAN)
-    for secret in ("AA:BB:CC", "aa:bb:cc", "Example Home", "SN998877", "AcmeRouters", "Living Room", "1234abcd"):
+    for secret in (
+        "AA:BB:CC",
+        "aa:bb:cc",
+        "Example Home",
+        "SN998877",
+        "AcmeRouters",
+        "Living Room",
+        "1234abcd",
+    ):
         assert secret not in out
     assert "Version: 1.0" in out  # non-identifying WPS fields survive
 

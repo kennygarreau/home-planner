@@ -19,6 +19,7 @@ from wifi_survey.collect.wifi import (
     parse_iw_link,
     parse_iw_scan_dump,
     parse_nmcli_wifi_list,
+    parse_power_save,
 )
 from wifi_survey.config import SurveyConfig
 
@@ -206,6 +207,8 @@ def measure_point(
             "server": cfg.iperf.server,
         }
 
+    if parse_power_save(runner.run(["iw", "dev", iface, "get", "power_save"]).stdout):
+        warnings.append("Wi-Fi power saving was on; latency readings are inflated")
     _step(progress, "latency", "Latency test")
     latency: dict[str, Any] | None = None
     target = cfg.ping.target

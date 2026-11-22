@@ -108,3 +108,21 @@ def test_rescan_not_authorized_fails_with_polkit_fix(fixture_text):
     check = next(c for c in report.checks if c.name == "Rescan permission")
     assert check.status == "fail" and not report.ok
     assert "polkit.addRule" in check.fix and "wheel" in check.fix
+
+
+def test_power_save_on_warns(fixture_text):
+    runner = make_runner(
+        fixture_text, overrides={("iw", "dev", "wlp128s20f3", "get", "power_save"): "Power save: on\n"}
+    )
+    report = run_doctor(cfg(), runner, tcp=lambda *a: None, http=lambda *a: None)
+    check = next(c for c in report.checks if c.name == "Wi-Fi power saving")
+    assert check.status == "warn" and "power_save off" in check.fix
+    assert report.ok  # a warning, not a blocker
+
+
+def test_power_save_off_passes(fixture_text):
+    runner = make_runner(
+        fixture_text, overrides={("iw", "dev", "wlp128s20f3", "get", "power_save"): "Power save: off\n"}
+    )
+    report = run_doctor(cfg(), runner, tcp=lambda *a: None, http=lambda *a: None)
+    assert next(c for c in report.checks if c.name == "Wi-Fi power saving").status == "pass"

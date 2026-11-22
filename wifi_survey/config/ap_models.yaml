@@ -1,13 +1,31 @@
-# AP radio specs per band. The Omada model is NOT confirmed yet (spec §1):
-# replace "omada_be11000_tbd" with the exact model (e.g. EAP7xx) and fill in
-# tx power / antenna gain from its datasheet. Values below are placeholders.
+# AP radio specs per band, used by the propagation model and the placement
+# optimiser. Antenna gains are from TP-Link's product pages and datasheets
+# (checked 2026-11-21). Transmit power is a CONSERVATIVE planning value, not the
+# legal maximum: the US 5 GHz ceiling is ~25 dBm and 6 GHz ~23 dBm, but
+# controllers usually run lower, and calibration absorbs the difference.
+# Set `confirmed: true` on the model actually purchased.
 schema_version: 1
 
 models:
-  omada_be11000_tbd:
+  # "BE11000 Ceiling Mount Tri-Band Wi-Fi 7 AP", 2.5 GbE port, PoE+ (802.3at)
+  tplink_eap772:
     vendor: TP-Link Omada
+    name: EAP772
     confirmed: false
     poe: "802.3at"
+    bands:
+      "2.4": {tx_power_dbm: 20, antenna_gain_dbi: 4, max_width_mhz: 40}
+      "5":   {tx_power_dbm: 23, antenna_gain_dbi: 5, max_width_mhz: 160}
+      "6":   {tx_power_dbm: 23, antenna_gain_dbi: 5, max_width_mhz: 320}
+
+  # "Omada 7 Pro X — BE11000 6-Stream Ceiling Mount Tri-Band Wi-Fi 7 AP", 10 GbE port.
+  # One regional page lists ~25.9 W max draw (802.3bt for full functionality):
+  # check the PoE budget before relying on 802.3at.
+  tplink_eap773:
+    vendor: TP-Link Omada
+    name: EAP773
+    confirmed: false
+    poe: "802.3bt (verify)"
     bands:
       "2.4": {tx_power_dbm: 20, antenna_gain_dbi: 4, max_width_mhz: 40}
       "5":   {tx_power_dbm: 23, antenna_gain_dbi: 5, max_width_mhz: 160}

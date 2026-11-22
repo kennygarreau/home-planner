@@ -347,6 +347,12 @@ def parse_iw_reg(text: str) -> str | None:
     return countries[-1] if "phy#" in text else countries[0]
 
 
+def parse_power_save(text: str) -> bool | None:
+    """`iw dev <if> get power_save` → True (on), False (off) or None (unknown)."""
+    m = re.search(r"Power save:\s*(on|off)", text, re.IGNORECASE)
+    return None if not m else m.group(1).lower() == "on"
+
+
 # ── Interface discovery ──────────────────────────────────────────────────────
 
 
