@@ -149,6 +149,19 @@ model Survey {
   createdAt DateTime      @default(now())
   updatedAt DateTime      @updatedAt
   points    SurveyPoint[]
+  analyses  SurveyAnalysis[]
+}
+
+// Output of the wifi_survey analysis service: fitted propagation model per
+// band, AP/radio mapping and heatmap grids. Only the latest few are kept.
+model SurveyAnalysis {
+  id        String   @id @default(cuid())
+  surveyId  String
+  survey    Survey   @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  result    Json
+  createdAt DateTime @default(now())
+
+  @@index([surveyId, createdAt])
 }
 
 model SurveyPoint {

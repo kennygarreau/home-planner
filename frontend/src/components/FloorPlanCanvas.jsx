@@ -92,7 +92,7 @@ function SurveyMarkers({ survey, px, onPointerDown }) {
 
 export default function FloorPlanCanvas({
   plan, ghost, tool, wallType, deviceType = 'ethernet', wifiLayer = false, selection, onSelect, showDims, fitKey, north = 0,
-  survey = null,
+  survey = null, heatmap = null,
   onCommit, onBeginTransient, onTransient, onTransientEnd,
 }) {
   const wrapRef = useRef(null)
@@ -387,6 +387,7 @@ export default function FloorPlanCanvas({
     else if (tool === 'room') setCursor({ area: findEnclosedArea(plan, world) })
     else if (tool === 'door' || tool === 'window') setCursor(openingCandidate(world))
     else if (tool === 'device') setCursor({ device: { type: deviceType, ...devicePoint(world, e) } })
+    else if (tool === 'survey' && heatmap) setCursor({ probe: heatmap.valueAt(world) })
   }
 
   const handleUp = (e) => {
@@ -422,7 +423,10 @@ export default function FloorPlanCanvas({
   const selOpening = selection?.type === 'opening' ? plan.openings.find((o) => o.id === selection.id) : null
   const selOpeningStart = selOpening ? nm[wallsById[selOpening.wallId]?.a] : null
 
-  const hint = message ?? (tool === 'wall' ? (drawStart ? HINTS.wallActive : HINTS.wallIdle) : HINTS[tool])
+  const probe = cursor?.probe
+  const hint = message
+    ?? (tool === 'survey' && probe != null ? `Predicted signal here: ${Math.round(probe)} dBm · ${HINTS.survey}` : null)
+    ?? (tool === 'wall' ? (drawStart ? HINTS.wallActive : HINTS.wallIdle) : HINTS[tool])
 
   return (
     <div ref={wrapRef} className="relative w-full h-full overflow-hidden bg-slate-950">
@@ -448,6 +452,14 @@ export default function FloorPlanCanvas({
           </pattern>
         </defs>
         <rect x={vbX} y={vbY} width={vbW} height={vbH} fill="url(#fp-grid-major)" />
+        {heatmap?.image && (
+          <clipPath id="fp-rooms-clip">
+            {plan.rooms.map((r) => {
+              const pts = roomPoints(r, nm)
+              return pts.length >= 3 ? <polygon key={r.id} points={pts.map((p) => `${p.x},${p.y}`).join(' ')} /> : null
+            })}
+          </clipPath>
+        )}
 
         {/* Floor below, for alignment */}
         {ghost && (
@@ -486,6 +498,13 @@ export default function FloorPlanCanvas({
             stroke={T.selected} strokeWidth={1.5 * px} strokeDasharray={`${6 * px} ${4 * px}`}
             pointerEvents="none"
           />
+        )}
+
+        {/* Wi-Fi heatmap (from the survey analysis), clipped to rooms, under the walls */}
+        {heatmap?.image && (
+          <image href={heatmap.image.href} x={heatmap.image.x} y={heatmap.image.y}
+            width={heatmap.image.width} height={heatmap.image.height}
+            preserveAspectRatio="none" clipPath="url(#fp-rooms-clip)" pointerEvents="none" />
         )}
 
         {/* Walls — interior first so exterior walls cleanly cover the joints */}

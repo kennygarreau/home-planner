@@ -30,6 +30,7 @@ services:
       AI_API_KEY: ${AI_API_KEY:-unused}
       AI_VISION_MODEL: ${AI_VISION_MODEL:-llama3.2-vision:11b}
       AI_TEXT_MODEL: ${AI_TEXT_MODEL:-qwen3:30b-a3b}
+      ANALYSIS_URL: http://analysis:8000
     # No host port: nginx proxies /api/ to backend:3001 over the internal network
     depends_on:
       db:
@@ -47,6 +48,20 @@ services:
       - "3000:80"
     depends_on:
       - backend
+
+  # Wi-Fi survey analysis (propagation model + heatmaps). Internal only: the
+  # backend calls it at http://analysis:8000; no host port.
+  analysis:
+    build:
+      context: ./wifi_survey
+      dockerfile: Dockerfile.analysis
+    container_name: homeplanner-analysis
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
 
   # iperf3 server for the Wi-Fi survey. Host networking so throughput isn't
   # measured through Docker's NAT; listens on 5201 on every host interface.

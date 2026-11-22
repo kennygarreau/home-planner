@@ -1,6 +1,10 @@
 // Wi-Fi surveys, as used by the browser. The laptop agent uses ./surveyAgent.js.
 const express = require('express')
 const hub = require('../lib/surveyHub')
+const { toWifiFloorplan } = require('../lib/wifiFloorplan')
+
+const ANALYSIS_URL = process.env.ANALYSIS_URL || 'http://analysis:8000'
+const KEEP_ANALYSES = 5
 
 const TYPES = ['baseline', 'ap_on_a_stick', 'validation']
 const ACTIVE = ['queued', 'running']
@@ -132,6 +136,53 @@ module.exports = (prisma) => {
     try {
       await prisma.surveyPoint.delete({ where: { id: req.params.pid } })
       res.json({ success: true })
+    } catch (e) {
+      res.status(500).json({ error: e.message })
+    }
+  })
+
+  // Fit the propagation model and build heatmaps (wifi_survey analysis service).
+  router.post('/:id/analyze', async (req, res) => {
+    try {
+      const [floors, points] = await Promise.all([
+        prisma.floorPlan.findMany(),
+        prisma.surveyPoint.findMany({ where: { surveyId: req.params.id, status: 'done' } }),
+      ])
+      const records = points.map((p) => p.record).filter(Boolean)
+      if (!records.length) return res.status(400).json({ error: 'This survey has no measurements yet' })
+
+      let resp
+      try {
+        resp = await fetch(`${ANALYSIS_URL}/analyze`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ floorplan: toWifiFloorplan(floors), records }),
+          signal: AbortSignal.timeout(120000),
+        })
+      } catch (e) {
+        return res.status(503).json({ error: `Analysis service unavailable (${e.cause?.code || e.name}) — is the "analysis" container running?` })
+      }
+      const result = await resp.json().catch(() => ({ error: `HTTP ${resp.status}` }))
+      if (!resp.ok) return res.status(502).json({ error: result.error || 'Analysis failed' })
+
+      const saved = await prisma.surveyAnalysis.create({ data: { surveyId: req.params.id, result } })
+      const old = await prisma.surveyAnalysis.findMany({
+        where: { surveyId: req.params.id }, orderBy: { createdAt: 'desc' }, skip: KEEP_ANALYSES, select: { id: true },
+      })
+      if (old.length) await prisma.surveyAnalysis.deleteMany({ where: { id: { in: old.map((a) => a.id) } } })
+      res.json({ id: saved.id, createdAt: saved.createdAt, ...result })
+    } catch (e) {
+      res.status(500).json({ error: e.message })
+    }
+  })
+
+  router.get('/:id/analysis', async (req, res) => {
+    try {
+      const a = await prisma.surveyAnalysis.findFirst({
+        where: { surveyId: req.params.id }, orderBy: { createdAt: 'desc' },
+      })
+      if (!a) return res.status(404).json({ error: 'Not analysed yet' })
+      res.json({ id: a.id, createdAt: a.createdAt, ...a.result })
     } catch (e) {
       res.status(500).json({ error: e.message })
     }

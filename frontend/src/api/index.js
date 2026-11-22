@@ -56,6 +56,8 @@ export const api = {
   remeasureSurveyPoint: (pid) => req('POST', `/surveys/points/${pid}/measure`),
   cancelSurveyPoint: (pid) => req('POST', `/surveys/points/${pid}/cancel`),
   deleteSurveyPoint: (pid) => req('DELETE', `/surveys/points/${pid}`),
+  analyzeSurvey: (id) => req('POST', `/surveys/${id}/analyze`),
+  getSurveyAnalysis: (id) => req('GET', `/surveys/${id}/analysis`),
 
   // Export
   exportJSON: () => window.open('/api/export/json', '_blank'),

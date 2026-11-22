@@ -15,6 +15,7 @@ import { downloadPng, downloadSvg } from '../floorplan/exportPlan'
 import SurveyPanel from '../components/SurveyPanel'
 import { useSurvey } from '../floorplan/useSurvey'
 import { suggestSpots, customLabel } from '../floorplan/survey'
+import { heatmapImage, heatmapValueAt } from '../floorplan/heatmap'
 
 const HISTORY_LIMIT = 100
 const SAVE_DELAY_MS = 700
@@ -231,6 +232,41 @@ export default function FloorPlans() {
   const suggestions = useMemo(() => suggestSpots(plan), [plan])
   const floorPoints = useMemo(() => surveyState.points.filter((p) => p.floorId === currentId), [surveyState.points, currentId])
   const selectedPoint = surveyState.points.find((p) => p.id === selectedPointId) ?? null
+
+  // Coverage model / heatmap for the selected survey.
+  const [analysis, setAnalysis] = useState(null)
+  const [analysisBusy, setAnalysisBusy] = useState(false)
+  const [analysisError, setAnalysisError] = useState(null)
+  const [showHeatmap, setShowHeatmap] = useState(true)
+  const [heatBand, setHeatBand] = useState('5')
+  useEffect(() => {
+    setAnalysis(null)
+    setAnalysisError(null)
+    if (mode !== 'survey' || !surveyId) return
+    let alive = true
+    api.getSurveyAnalysis(surveyId).then((a) => { if (alive) setAnalysis(a) }).catch(() => {})
+    return () => { alive = false }
+  }, [surveyId, mode])
+  const runAnalysis = async () => {
+    setAnalysisBusy(true)
+    setAnalysisError(null)
+    try {
+      const a = await api.analyzeSurvey(surveyId)
+      setAnalysis(a)
+      setShowHeatmap(true)
+      if (!a.bands[heatBand]) setHeatBand(Object.keys(a.bands)[0] ?? '5')
+    } catch (e) {
+      setAnalysisError(e.message)
+    } finally {
+      setAnalysisBusy(false)
+    }
+  }
+  const heatGrid = analysis?.grids?.[currentId]
+  const heatmap = useMemo(() => {
+    if (mode !== 'survey' || !showHeatmap || !heatGrid) return null
+    const image = heatmapImage(heatGrid, heatBand)
+    return image ? { image, valueAt: (pt) => heatmapValueAt(heatGrid, heatBand, pt) } : null
+  }, [mode, showHeatmap, heatGrid, heatBand])
 
   const setMode = (m) => {
     setModeState(m)
@@ -572,6 +608,7 @@ export default function FloorPlans() {
             plan={plan}
             ghost={ghost}
             tool={mode === 'survey' ? 'survey' : tool}
+            heatmap={heatmap}
             survey={mode === 'survey' ? {
               suggestions, points: floorPoints, selectedId: selectedPointId, onPick: surveyPick,
             } : null}
@@ -602,6 +639,10 @@ export default function FloorPlans() {
               onSelectPoint={setSelectedPointId}
               message={surveyMsg ?? surveyState.error}
               onAction={surveyAction}
+              analysisProps={{
+                analysis, busy: analysisBusy, error: analysisError, onAnalyze: runAnalysis,
+                show: showHeatmap, onShow: setShowHeatmap, band: heatBand, onBand: setHeatBand,
+              }}
             />
           ) : (<>
           {selWall && (

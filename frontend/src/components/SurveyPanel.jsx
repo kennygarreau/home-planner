@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { Plus, Laptop, RefreshCw, Trash2, X, Loader2, AlertTriangle, Download, CheckCircle2 } from 'lucide-react'
+import { Plus, Laptop, RefreshCw, Trash2, X, Loader2, AlertTriangle, Download, CheckCircle2, Activity } from 'lucide-react'
 import { api } from '../api'
 import { SIGNAL_CLASSES, signalClass, pointSignal, ACTIVE_STATUSES } from '../floorplan/survey'
+import { WALL_MATERIALS, FLOOR_STRUCTURES } from '../floorplan/geometry'
 
 export const SURVEY_TYPES = {
   baseline: 'Baseline (current network)',
@@ -240,6 +241,99 @@ function PointDetails({ point, busy, onRemeasure, onDelete, onClose }) {
   )
 }
 
+const MATERIAL_LABEL = (key) => {
+  const [kind, name] = key.split(':')
+  if (kind === 'wall') return WALL_MATERIALS[name]?.label ?? name
+  if (kind === 'slab') return `Floor: ${FLOOR_STRUCTURES[name] ?? name}`
+  return { wood_door: 'Doors', glass: 'Windows' }[name] ?? name
+}
+
+function AnalysisCard({ analysis, busy, error, onAnalyze, show, onShow, band, onBand, donePoints }) {
+  const bands = analysis ? Object.keys(analysis.bands).sort() : []
+  return (
+    <div className="card space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-200"><Activity size={15} /> Coverage model</h3>
+        <button className="btn-ghost !py-1 !px-2.5 text-xs disabled:opacity-40" disabled={busy || !donePoints} onClick={onAnalyze}>
+          {busy ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />} {analysis ? 'Re-run' : 'Analyse'}
+        </button>
+      </div>
+      {error && <p className="text-xs text-red-400">{error}</p>}
+      {!analysis && !error && (
+        <p className="text-xs text-slate-500">
+          Fits a wall-by-wall signal model to your {donePoints} measurements and draws a heatmap of the whole floor.
+        </p>
+      )}
+      {analysis && (
+        <>
+          <div className="flex items-center gap-2">
+            <label className="flex items-center gap-2 text-sm text-slate-300 cursor-pointer">
+              <input type="checkbox" className="accent-brand-500" checked={show} onChange={(e) => onShow(e.target.checked)} />
+              Heatmap
+            </label>
+            <div className="ml-auto flex gap-1">
+              {bands.map((b) => (
+                <button key={b} onClick={() => onBand(b)}
+                  className={`px-2 py-0.5 rounded text-xs border ${band === b ? 'bg-brand-600/25 text-brand-300 border-brand-600/40' : 'border-slate-700 text-slate-400'}`}>
+                  {b} GHz
+                </button>
+              ))}
+            </div>
+          </div>
+          {analysis.bands[band] && (() => {
+            const b = analysis.bands[band]
+            const good = b.rmse_db <= 6
+            return (
+              <div className="space-y-2">
+                <Row label="Readings" value={b.n_obs} />
+                <Row label="Model error (RMSE)" mono={false}
+                  value={<span className={`font-mono ${good ? 'text-brand-400' : 'text-amber-400'}`}>{b.rmse_db} dB {good ? '✓' : '(target ≤ 6)'}</span>} />
+                <Row label="Distance falloff (n)" value={b.path_loss_exponent} />
+                <div className="border-t border-slate-800 pt-2">
+                  <div className="text-xs text-slate-500 mb-1">Loss per crossing: starting → fitted</div>
+                  {Object.entries(b.material_factors).map(([k, f]) => {
+                    const fitted = b.material_loss_db[k]
+                    const start = f ? fitted / f : fitted
+                    const atLimit = f <= 0.2 || f >= 3.5
+                    return (
+                      <div key={k} className="flex justify-between text-xs py-0.5">
+                        <span className="text-slate-400 truncate">{MATERIAL_LABEL(k)}</span>
+                        <span className="font-mono text-slate-200">
+                          {start.toFixed(0)} → {fitted.toFixed(1)} dB{atLimit && <span className="text-amber-400" title="Hit the fit's limit: the data says this table value is far off, or this material is rarely crossed"> *</span>}
+                        </span>
+                      </div>
+                    )
+                  })}
+                </div>
+                <div className="border-t border-slate-800 pt-2">
+                  <div className="text-xs text-slate-500 mb-1">Radios matched to your APs</div>
+                  {analysis.aps.map((a) => (
+                    <div key={a.ap_id} className="text-xs flex justify-between py-0.5">
+                      <span className="text-slate-300 truncate">{a.label}</span>
+                      <span className="font-mono text-slate-500">
+                        {a.radios.map((r) => `${r.band}/${r.channel}`).join(' ')} · {a.distance_m} m
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )
+          })()}
+          {analysis.warnings?.length > 0 && (
+            <ul className="text-xs text-amber-400/90 list-disc pl-4 space-y-0.5">
+              {analysis.warnings.map((w) => <li key={w}>{w}</li>)}
+            </ul>
+          )}
+          <p className="text-xs text-slate-600">
+            {new Date(analysis.createdAt).toLocaleString()} · {analysis.points_used} points. The heatmap is the model's
+            prediction, nudged to match your readings near each spot.
+          </p>
+        </>
+      )}
+    </div>
+  )
+}
+
 function RoomProgress({ suggestions, points }) {
   const done = new Set(points.filter((p) => p.record).map((p) => p.label))
   const groups = []
@@ -279,6 +373,7 @@ function RoomProgress({ suggestions, points }) {
 
 export default function SurveyPanel({
   surveyId, onSurveyChange, state, suggestions, floorPoints, selectedPoint, onSelectPoint, message, onAction,
+  analysisProps,
 }) {
   const manifest = useAgentManifest()
   const active = state.points.find((p) => ACTIVE_STATUSES.includes(p.status))
@@ -301,6 +396,7 @@ export default function SurveyPanel({
               onClose={() => onSelectPoint(null)}
             />
           )}
+          <AnalysisCard {...analysisProps} donePoints={state.points.filter((p) => p.record).length} />
           <RoomProgress suggestions={suggestions} points={floorPoints} />
           <div className="card space-y-1.5">
             <div className="text-xs text-slate-500 mb-1">Signal at each point</div>
