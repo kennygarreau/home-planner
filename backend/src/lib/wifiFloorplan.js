@@ -7,7 +7,10 @@
 //
 // Additions beyond the spec's example schema (all optional for consumers):
 //   floors[].level, rooms[].area_m2, walls[].exterior, openings[].id/height_m/material,
-//   devices' label, floors[].existing_aps, top-level warnings[].
+//   devices' label, floors[].existing_aps, top-level warnings[],
+//   floors[].ap_placement ("anywhere" | "candidates" | "none") and rooms[].ap_allowed:
+//   with "anywhere" the planner generates its own ceiling grid over rooms where
+//   ap_allowed is true; candidate_ap_sites then only add preferred spots.
 // openings[].offset_m is the distance from wall.a to the opening's NEAR edge.
 
 const SCHEMA_VERSION = 1
@@ -65,6 +68,7 @@ function convertFloor(floor, ctx) {
       area_m2: Math.round(polygonArea(poly) * 100) / 100,
       priority: r.priority || 'normal',
       use: r.uses || [],
+      ap_allowed: !r.noAp,
     })
   }
   if (!rooms.length) ctx.warnings.push(`${where}: no rooms defined — per-room grading needs rooms`)
@@ -100,6 +104,7 @@ function convertFloor(floor, ctx) {
     elevation_m: ctx.elevations[floor.level],
     ceiling_height_m: m(floor.ceilingHt * 12),
     slab_material: ctx.slabAbove(floor.level),
+    ap_placement: ['anywhere', 'candidates', 'none'].includes(d.apPlacement) ? d.apPlacement : 'anywhere',
     rooms,
     walls: walls.map((w) => ({
       id: w.id,
@@ -141,8 +146,16 @@ function toWifiFloorplan(floorRows) {
   if (!floors.length) ctx.warnings.push('No floors drawn yet')
   const converted = floors.map((f) => convertFloor(f, ctx))
   const north = floors[0]?.north ?? 0
-  if (converted.length && !converted.some((f) => f.ethernet_drops.length || f.candidate_ap_sites.length)) {
-    ctx.warnings.push('No Ethernet drops or candidate AP sites marked — placement needs at least one')
+  const placeable = converted.some((f) =>
+    (f.ap_placement === 'anywhere' && f.rooms.some((r) => r.ap_allowed)) ||
+    (f.ap_placement === 'candidates' && f.candidate_ap_sites.length))
+  if (converted.length && !placeable) {
+    ctx.warnings.push('No floor allows new APs: set a floor to "Anywhere" or mark candidate AP sites')
+  }
+  for (const f of converted) {
+    if (f.ap_placement === 'candidates' && !f.candidate_ap_sites.length) {
+      ctx.warnings.push(`floor "${f.name}": AP placement is "candidate sites only" but none are marked`)
+    }
   }
   return {
     schema_version: SCHEMA_VERSION,

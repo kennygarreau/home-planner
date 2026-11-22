@@ -2,7 +2,8 @@ const express = require('express')
 
 const { toWifiFloorplan } = require('../lib/wifiFloorplan')
 
-const EMPTY_PLAN = { nodes: [], walls: [], rooms: [], openings: [], devices: [], floorStructure: 'wood_joist' }
+const AP_PLACEMENT = ['anywhere', 'candidates', 'none']
+const EMPTY_PLAN = { nodes: [], walls: [], rooms: [], openings: [], devices: [], floorStructure: 'wood_joist', apPlacement: 'anywhere' }
 
 // Pick only the editable fields that were actually sent, with light validation.
 function pickFields(body) {
@@ -12,7 +13,7 @@ function pickFields(body) {
   if (body.ceilingHt !== undefined && Number(body.ceilingHt) > 0) out.ceilingHt = Number(body.ceilingHt)
   if (body.north !== undefined && Number.isFinite(Number(body.north))) out.north = ((Number(body.north) % 360) + 360) % 360
   if (body.data && typeof body.data === 'object' && !Array.isArray(body.data)) {
-    const { nodes, walls, rooms, openings, devices, floorStructure } = body.data
+    const { nodes, walls, rooms, openings, devices, floorStructure, apPlacement } = body.data
     out.data = {
       nodes: Array.isArray(nodes) ? nodes : [],
       walls: Array.isArray(walls) ? walls : [],
@@ -20,6 +21,7 @@ function pickFields(body) {
       openings: Array.isArray(openings) ? openings : [],
       devices: Array.isArray(devices) ? devices : [],
       floorStructure: typeof floorStructure === 'string' ? floorStructure : 'wood_joist',
+      apPlacement: AP_PLACEMENT.includes(apPlacement) ? apPlacement : 'anywhere',
     }
   }
   return out

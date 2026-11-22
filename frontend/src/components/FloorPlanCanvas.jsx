@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useLayoutEffect, useMemo } from 'react'
 import { ZoomIn, ZoomOut, Maximize } from 'lucide-react'
 import {
-  GRID, WALL_DEFAULTS, OPENING_DEFAULTS, uid, dist, roundTo, nodeMap, clonePlan, snapPoint, resolveAnchor, addWall,
+  GRID, WALL_DEFAULTS, OPENING_DEFAULTS, uid, dist, roundTo, nodeMap, clonePlan, snapPoint, resolveAnchor, addWallSplitting,
   roomPoints, polygonArea, polygonCentroid, sqft, planBounds, fmtLen, findEnclosedArea, findRoomByNodes,
   projectOnSegment, openingSpan, openingFits, WALL_MATERIALS, wallMaterial, newDevice, DEVICE_TYPES,
 } from '../floorplan/geometry'
@@ -93,7 +93,7 @@ function SurveyMarkers({ survey, px, onPointerDown }) {
 export default function FloorPlanCanvas({
   plan, ghost, tool, wallType, deviceType = 'ethernet', wifiLayer = false, selection, onSelect, showDims, fitKey, north = 0,
   survey = null,
-  onCommit, onBeginTransient, onTransient,
+  onCommit, onBeginTransient, onTransient, onTransientEnd,
 }) {
   const wrapRef = useRef(null)
   const svgRef = useRef(null)
@@ -235,7 +235,7 @@ export default function FloorPlanCanvas({
     const next = clonePlan(plan)
     const a = resolveAnchor(next, drawStart)
     const b = resolveAnchor(next, s)
-    if (addWall(next, a, b, { ...WALL_DEFAULTS[wallType] })) onCommit(next)
+    if (addWallSplitting(next, a, b, { ...WALL_DEFAULTS[wallType] }).length) onCommit(next)
     // Landing on an existing point or wall closes the chain.
     setDrawStart(s.nodeId || s.wallId ? null : { x: s.x, y: s.y, nodeId: b })
   }
@@ -392,6 +392,7 @@ export default function FloorPlanCanvas({
   const handleUp = (e) => {
     const d = drag.current
     drag.current = null
+    if (d?.moved && d.type !== 'pan') onTransientEnd?.()
     if (d?.type === 'pan' && d.click && !d.moved && survey) {
       const w = toWorld(e)
       survey.onPick({ kind: 'spot', x: Math.round(w.x), y: Math.round(w.y) })

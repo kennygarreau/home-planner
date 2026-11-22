@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import {
   Plus, Trash2, MousePointer2, PenLine, Square, Undo2, Redo2, Ruler, Layers, Check, Loader2, AlertTriangle,
-  DoorOpen, AppWindow, Download, FlipHorizontal2, FlipVertical2, RotateCw, Router, Wifi,
+  DoorOpen, AppWindow, Download, FlipHorizontal2, FlipVertical2, RotateCw, Router, Wifi, Copy,
 } from 'lucide-react'
 import { api } from '../api'
 import FloorPlanCanvas from '../components/FloorPlanCanvas'
@@ -9,7 +9,7 @@ import {
   WALL_DEFAULTS, OPENING_LABELS, normalizePlan, clonePlan, nodeMap, wallLength, roomPoints, polygonArea, polygonPerimeter,
   sqft, planStats, deleteSelection, setWallLength, fmtLen, parseLen, openingSpan, openingFits, outwardNormal,
   compassFacing, FACING_NAMES, enclosedFootprint, WALL_MATERIALS, wallMaterial, FLOOR_STRUCTURES, DEVICE_TYPES, MOUNTS,
-  ROOM_PRIORITIES, ROOM_USES,
+  ROOM_PRIORITIES, ROOM_USES, DUPLICATE_PRESETS, duplicatePlan, levelName, repairPlan, AP_PLACEMENT,
 } from '../floorplan/geometry'
 import { downloadPng, downloadSvg } from '../floorplan/exportPlan'
 import SurveyPanel from '../components/SurveyPanel'
@@ -70,6 +70,76 @@ function SaveIndicator({ state }) {
   if (state === 'saving') return <span className="flex items-center gap-1.5 text-xs text-slate-500"><Loader2 size={12} className="animate-spin" /> Saving…</span>
   if (state === 'error') return <span className="flex items-center gap-1.5 text-xs text-red-400"><AlertTriangle size={12} /> Save failed</span>
   return <span className="flex items-center gap-1.5 text-xs text-slate-500"><Check size={12} /> Saved</span>
+}
+
+// Copy the current floor to a new level above the top floor or below the bottom one.
+function DuplicateFloor({ floor, floors, onDuplicate }) {
+  const [open, setOpen] = useState(false)
+  const [place, setPlace] = useState('above')
+  const [preset, setPreset] = useState('outline')
+  const [name, setName] = useState('')
+  const [busy, setBusy] = useState(false)
+  const levels = floors.map((f) => f.level)
+  const level = place === 'above' ? Math.max(...levels) + 1 : Math.min(...levels) - 1
+  const defaultName = (() => {
+    const base = levelName(level)
+    return floors.some((f) => f.name === base) ? `${base} (copy)` : base
+  })()
+
+  if (!open) {
+    return (
+      <button className="btn-ghost w-full justify-center" onClick={() => setOpen(true)}>
+        <Copy size={14} /> Duplicate floor
+      </button>
+    )
+  }
+  const create = async () => {
+    setBusy(true)
+    try {
+      await onDuplicate({ name: name.trim() || defaultName, level, preset })
+      setOpen(false)
+      setName('')
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <div className="rounded-lg border border-slate-700 p-3 space-y-3">
+      <div className="text-sm font-medium text-slate-200">Duplicate “{floor.name}”</div>
+      <div className="grid grid-cols-2 gap-1">
+        {[['above', 'Above top floor'], ['below', 'Below bottom floor']].map(([k, l]) => (
+          <button key={k} onClick={() => setPlace(k)}
+            className={`px-2 py-1.5 rounded-md text-xs border ${place === k
+              ? 'bg-brand-600/25 text-brand-300 border-brand-600/40' : 'border-slate-700 text-slate-400 hover:bg-slate-800'}`}>
+            {l}
+          </button>
+        ))}
+      </div>
+      <div>
+        <label className="label">Name</label>
+        <input className="input" value={name} placeholder={defaultName} onChange={(e) => setName(e.target.value)} />
+        <p className="text-xs text-slate-600 mt-1">Level {level}</p>
+      </div>
+      <div className="space-y-1.5">
+        <label className="label">Copy</label>
+        {Object.entries(DUPLICATE_PRESETS).map(([k, { label, hint }]) => (
+          <label key={k} className="flex items-start gap-2 text-sm cursor-pointer">
+            <input type="radio" name="dup-preset" className="accent-brand-500 mt-1" checked={preset === k} onChange={() => setPreset(k)} />
+            <span>
+              <span className="text-slate-200">{label}</span>
+              <span className="block text-xs text-slate-500">{hint}</span>
+            </span>
+          </label>
+        ))}
+      </div>
+      <div className="flex gap-2">
+        <button className="btn-primary flex-1 justify-center disabled:opacity-50" disabled={busy} onClick={create}>
+          <Copy size={14} /> Create
+        </button>
+        <button className="btn-ghost" onClick={() => setOpen(false)}>Cancel</button>
+      </div>
+    </div>
+  )
 }
 
 export default function FloorPlans() {
@@ -242,7 +312,12 @@ export default function FloorPlans() {
     redoRef.current = []
     setHistVersion((v) => v + 1)
   }
-  const commit = (next) => { pushUndo(); setPlan(next) }
+  // Every edit goes through repairPlan so walls only ever meet at shared corners.
+  const commit = (next) => { repairPlan(next); pushUndo(); setPlan(next) }
+  const finishTransient = () => {
+    const next = clonePlan(plan)
+    if (repairPlan(next)) setPlan(next)
+  }
   const edit = (fn) => { const next = clonePlan(plan); fn(next); commit(next) }
 
   const undo = () => {
@@ -303,13 +378,25 @@ export default function FloorPlans() {
 
   const addFloor = async () => {
     const level = floors.length ? Math.max(...floors.map((f) => f.level)) + 1 : 0
-    const name = floors.length ? `Floor ${floors.length + 1}` : 'Main Floor'
+    const name = floors.some((f) => f.name === levelName(level)) ? `Floor ${floors.length + 1}` : levelName(level)
     try {
       const f = await api.createFloorPlan({ name, level, north: floors[0]?.north ?? 0 })
       setFloors((fs) => [...fs, f])
       switchFloor(f.id)
     } catch (e) {
       alert(`Could not create floor: ${e.message}`)
+    }
+  }
+
+  const duplicateFloor = async ({ name, level, preset }) => {
+    try {
+      const f = await api.createFloorPlan({
+        name, level, ceilingHt: floor.ceilingHt, north: floor.north ?? 0, data: duplicatePlan(plan, preset),
+      })
+      setFloors((fs) => [...fs, f])
+      switchFloor(f.id)
+    } catch (e) {
+      alert(`Could not duplicate floor: ${e.message}`)
     }
   }
 
@@ -323,6 +410,16 @@ export default function FloorPlans() {
     if (next) switchFloor(next.id)
     else setCurrentId(null)
   }
+
+  // Floors drawn before wall repair existed may have overlapping or unjoined
+  // walls; fix them once when opened (connectivity only — nothing moves).
+  const repairedFloors = useRef(new Set())
+  useEffect(() => {
+    if (!floor || repairedFloors.current.has(floor.id)) return
+    repairedFloors.current.add(floor.id)
+    const next = clonePlan(plan)
+    if (repairPlan(next)) updateFloor(floor.id, { data: next })
+  }, [floor?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Keyboard shortcuts ───────────────────────────────────────────────────
 
@@ -489,6 +586,7 @@ export default function FloorPlans() {
             onCommit={commit}
             onBeginTransient={pushUndo}
             onTransient={setPlan}
+            onTransientEnd={finishTransient}
           />
         </div>
 
@@ -608,6 +706,16 @@ export default function FloorPlans() {
                   </div>
                   <p className="text-xs text-slate-600 mt-1">Sets the signal target, e.g. video calls need about -67 dBm or better.</p>
                 </div>
+                <label className="flex items-start gap-2 text-sm text-slate-300 cursor-pointer">
+                  <input type="checkbox" className="accent-brand-500 mt-0.5" checked={!!selRoom.noAp}
+                    onChange={(e) => editRoom((r) => { r.noAp = e.target.checked || undefined })} />
+                  <span>
+                    Don't put an AP in this room
+                    {plan.apPlacement !== 'anywhere' && (
+                      <span className="block text-xs text-slate-500">Only matters when the floor's AP placement is "Anywhere".</span>
+                    )}
+                  </span>
+                </label>
               </div>
             </div>
           )}
@@ -807,6 +915,14 @@ export default function FloorPlans() {
                 </select>
                 <p className="text-xs text-slate-600 mt-1">How much Wi-Fi this floor loses to the level beneath. Ignored on the lowest floor.</p>
               </div>
+              <div>
+                <label className="label">New AP placement</label>
+                <select className="input" value={plan.apPlacement}
+                  onChange={(e) => edit((p) => { p.apPlacement = e.target.value })}>
+                  {Object.entries(AP_PLACEMENT).map(([k, { label }]) => <option key={k} value={k}>{label}</option>)}
+                </select>
+                <p className="text-xs text-slate-600 mt-1">{AP_PLACEMENT[plan.apPlacement]?.hint}. Exclude single rooms from the room panel.</p>
+              </div>
               <div className="border-t border-slate-800 pt-2">
                 <Stat label="Enclosed area" value={`${Math.round(sqft(enclosedFootprint(plan)))} sq ft`} />
                 <Stat label="Room area" value={`${Math.round(stats.roomArea)} sq ft`} />
@@ -815,6 +931,7 @@ export default function FloorPlans() {
                 <Stat label="Ext. wall area (gross)" value={`${Math.round(stats.extWallArea)} sq ft`} />
                 <Stat label="Interior walls" value={fmtLen(stats.intLen)} />
               </div>
+              <DuplicateFloor floor={floor} floors={floors} onDuplicate={duplicateFloor} />
               <button className="btn-danger w-full justify-center" onClick={deleteFloor}>
                 <Trash2 size={14} /> Delete floor
               </button>

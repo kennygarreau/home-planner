@@ -7,7 +7,8 @@
 //             offset = distance from wall.a to the opening's centre; side = ±1 swing side; hinge = 'a'|'b'
 //   devices:  [{ id, type: 'ethernet'|'candidate'|'ap', x, y, label, mount, existing?, cableFeasible?, model? }]
 //   floorStructure: construction of the floor beneath this level (Wi-Fi attenuation between floors)
-// Walls also carry `material`, rooms carry `priority` and `uses` — all consumed by the Wi-Fi survey.
+//   apPlacement: where the AP planner may put new APs on this floor (see AP_PLACEMENT)
+// Walls also carry `material`; rooms carry `priority`, `uses` and `noAp` — all consumed by the Wi-Fi survey.
 
 export const GRID = 6
 export const WALL_DEFAULTS = {
@@ -31,6 +32,12 @@ export const wallMaterial = (w) => w.material ?? (w.exterior ? 'exterior_frame' 
 export const FLOOR_STRUCTURES = {
   wood_joist: 'Wood joists + subfloor',
   concrete_slab: 'Concrete slab',
+}
+
+export const AP_PLACEMENT = {
+  anywhere: { label: 'Anywhere', hint: 'Try ceiling spots across every room (cable can go anywhere)' },
+  candidates: { label: 'Candidate sites only', hint: 'Only where you have marked a candidate AP site' },
+  none: { label: 'No APs on this floor', hint: 'Coverage is still measured and predicted here' },
 }
 
 export const DEVICE_TYPES = {
@@ -76,7 +83,9 @@ export const OPENING_LABELS = { door: 'Door', window: 'Window', passage: 'Open p
 // crypto.randomUUID is unavailable over plain http on a LAN, so roll our own.
 export const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4)
 
-export const emptyPlan = () => ({ nodes: [], walls: [], rooms: [], openings: [], devices: [], floorStructure: 'wood_joist' })
+export const emptyPlan = () => ({
+  nodes: [], walls: [], rooms: [], openings: [], devices: [], floorStructure: 'wood_joist', apPlacement: 'anywhere',
+})
 export const normalizePlan = (d) => ({
   nodes: d?.nodes ?? [],
   walls: d?.walls ?? [],
@@ -84,6 +93,7 @@ export const normalizePlan = (d) => ({
   openings: d?.openings ?? [],
   devices: d?.devices ?? [],
   floorStructure: d?.floorStructure ?? 'wood_joist',
+  apPlacement: d?.apPlacement ?? 'anywhere',
 })
 export const clonePlan = (p) => JSON.parse(JSON.stringify(p))
 
@@ -164,8 +174,37 @@ export function planBounds(plans) {
 
 // ── Snapping ────────────────────────────────────────────────────────────────
 
-// Returns { x, y, nodeId? , wallId? }. Priority: existing node → point on a wall
-// → 45° angle + grid length from `from` → plain grid.
+// Where segment a→b crosses segment p→q: { t (along a→b), u (along p→q), x, y } or null.
+export function segmentIntersection(a, b, p, q) {
+  const rx = b.x - a.x, ry = b.y - a.y, sx = q.x - p.x, sy = q.y - p.y
+  const den = rx * sy - ry * sx
+  if (Math.abs(den) < 1e-9) return null  // parallel
+  const t = ((p.x - a.x) * sy - (p.y - a.y) * sx) / den
+  const u = ((p.x - a.x) * ry - (p.y - a.y) * rx) / den
+  return { t, u, x: a.x + t * rx, y: a.y + t * ry }
+}
+
+// A point on wall a→b near `pr` (a projection), snapped along the wall: to the
+// grid on horizontal/vertical walls, to whole inches on diagonal ones.
+function snapAlongWall(pr, a, b, grid) {
+  const len = dist(a, b)
+  let q
+  if (Math.abs(a.y - b.y) < 1e-6) q = { x: roundTo(pr.x, grid), y: a.y }
+  else if (Math.abs(a.x - b.x) < 1e-6) q = { x: a.x, y: roundTo(pr.y, grid) }
+  else {
+    const along = Math.round(pr.t * len)
+    q = { x: a.x + ((b.x - a.x) * along) / len, y: a.y + ((b.y - a.y) * along) / len }
+  }
+  const t = projectOnSegment(q, a, b).t
+  return t > 0 && t < 1 ? q : { x: pr.x, y: pr.y }  // rounding pushed it off the wall's end
+}
+
+// Returns { x, y, nodeId? , wallId? }. Priority:
+//   1. an existing corner within `tol`
+//   2. while drawing (`from` set): where the 45°-snapped line from `from` meets a
+//      wall near the cursor — keeps the wall square and its length exact
+//   3. with no `from`: a point on a nearby wall, snapped along the wall to the grid
+//   4. 45° angle + grid-length from `from`, or the plain grid
 export function snapPoint(plan, p, { from = null, tol, grid = GRID, free = false, nodesOnly = false }) {
   if (free) return { x: clean(p.x), y: clean(p.y) }
 
@@ -177,20 +216,31 @@ export function snapPoint(plan, p, { from = null, tol, grid = GRID, free = false
   if (best || nodesOnly) return best
 
   const nm = nodeMap(plan)
+  const ang = from ? roundTo(Math.atan2(p.y - from.y, p.x - from.x), Math.PI / 4) : 0
+  const dir = { x: Math.cos(ang), y: Math.sin(ang) }
+
   for (const w of plan.walls) {
     const a = nm[w.a], b = nm[w.b]
     if (!a || !b) continue
-    const pr = projectOnSegment(p, a, b)
-    if (pr.d <= tol && pr.t > 0 && pr.t < 1 && (!best || pr.d < best.d)) {
-      best = { d: pr.d, x: clean(pr.x), y: clean(pr.y), wallId: w.id }
+    if (from) {
+      const far = { x: from.x + dir.x, y: from.y + dir.y }
+      const hit = segmentIntersection(from, far, a, b)
+      if (!hit || hit.t <= 0.01 || hit.u <= 1e-6 || hit.u >= 1 - 1e-6) continue
+      const d = dist(hit, p)
+      if (d <= tol && (!best || d < best.d)) best = { d, x: clean(hit.x), y: clean(hit.y), wallId: w.id }
+    } else {
+      const pr = projectOnSegment(p, a, b)
+      if (pr.d <= tol && pr.t > 0 && pr.t < 1 && (!best || pr.d < best.d)) {
+        const q = snapAlongWall(pr, a, b, grid)
+        best = { d: pr.d, x: clean(q.x), y: clean(q.y), wallId: w.id }
+      }
     }
   }
   if (best) return best
 
   if (from) {
     const len = roundTo(dist(p, from), grid)
-    const ang = roundTo(Math.atan2(p.y - from.y, p.x - from.x), Math.PI / 4)
-    return { x: clean(from.x + len * Math.cos(ang)), y: clean(from.y + len * Math.sin(ang)) }
+    return { x: clean(from.x + len * dir.x), y: clean(from.y + len * dir.y) }
   }
   return { x: roundTo(p.x, grid), y: roundTo(p.y, grid) }
 }
@@ -419,6 +469,38 @@ export function resolveAnchor(plan, s) {
   return node.id
 }
 
+// Add wall a→b, splitting it (and the walls it crosses) at every crossing and at
+// any existing corner it passes through, so junctions exist for room detection.
+export function addWallSplitting(plan, aId, bId, props) {
+  const nm = nodeMap(plan)
+  const A = nm[aId], B = nm[bId]
+  if (!A || !B || aId === bId) return []
+  const len = dist(A, B)
+  const stops = []
+  for (const n of plan.nodes) {
+    if (n.id === aId || n.id === bId) continue
+    const pr = projectOnSegment(n, A, B)
+    if (pr.d < 0.5 && pr.t * len > 0.5 && (1 - pr.t) * len > 0.5) stops.push({ t: pr.t, nodeId: n.id })
+  }
+  for (const w of [...plan.walls]) {
+    if (w.a === aId || w.b === aId || w.a === bId || w.b === bId) continue
+    const P = nm[w.a], Q = nm[w.b]
+    if (!P || !Q) continue
+    const hit = segmentIntersection(A, B, P, Q)
+    if (!hit || hit.t * len <= 0.5 || (1 - hit.t) * len <= 0.5 || hit.u <= 1e-6 || hit.u >= 1 - 1e-6) continue
+    if (stops.some((s) => Math.abs(s.t - hit.t) * len < 0.5)) continue
+    stops.push({ t: hit.t, nodeId: splitWall(plan, w.id, hit) })
+  }
+  stops.sort((x, y) => x.t - y.t)
+  const chain = [aId, ...stops.map((s) => s.nodeId), bId]
+  const added = []
+  for (let i = 0; i < chain.length - 1; i++) {
+    const w = addWall(plan, chain[i], chain[i + 1], props)
+    if (w) added.push(w)
+  }
+  return added
+}
+
 export function addWall(plan, a, b, props) {
   if (a === b) return null
   if (plan.walls.some((w) => (w.a === a && w.b === b) || (w.a === b && w.b === a))) return null
@@ -465,6 +547,210 @@ export function setWallLength(plan, wallId, len) {
   b.x = clean(a.x + ((b.x - a.x) / cur) * len)
   b.y = clean(a.y + ((b.y - a.y) / cur) * len)
 }
+
+// ── Repairing wall connectivity ─────────────────────────────────────────────
+
+const JOIN_TOL = 0.5 // inches: closer than this counts as the same point
+
+// Split `wall` at an existing node that lies on it; openings past the node move
+// to the second half.
+function splitWallAtNode(plan, wall, nodeId, nm) {
+  const splitAt = dist(nm[wall.a], nm[nodeId])
+  const second = { ...wall, id: uid(), a: nodeId, b: wall.b }
+  wall.b = nodeId
+  plan.walls.push(second)
+  for (const o of plan.openings) {
+    if (o.wallId === wall.id && o.offset > splitAt) {
+      o.wallId = second.id
+      o.offset = clean(o.offset - splitAt)
+    }
+  }
+}
+
+// Make the wall graph match what's drawn: walls only meet at shared corners.
+// Never moves anything — it only merges, splits and de-duplicates. Fixes walls
+// drawn on top of other walls, corners resting on a wall without joining it,
+// and crossings without a junction, all of which break room detection.
+// Returns the number of fixes made (0 = plan unchanged).
+export function repairPlan(plan) {
+  let fixes = 0
+
+  // 1. Corners at the same spot → one corner.
+  const alias = new Map()
+  for (let i = 0; i < plan.nodes.length; i++) {
+    const n = plan.nodes[i]
+    if (alias.has(n.id)) continue
+    for (let j = i + 1; j < plan.nodes.length; j++) {
+      const m = plan.nodes[j]
+      if (!alias.has(m.id) && dist(n, m) < JOIN_TOL) alias.set(m.id, n.id)
+    }
+  }
+  if (alias.size) {
+    const to = (id) => alias.get(id) ?? id
+    plan.walls.forEach((w) => { w.a = to(w.a); w.b = to(w.b) })
+    plan.rooms.forEach((r) => {
+      r.nodeIds = r.nodeIds.map(to).filter((id, k, arr) => id !== arr[(k + arr.length - 1) % arr.length])
+    })
+    plan.nodes = plan.nodes.filter((n) => !alias.has(n.id))
+    plan.walls = plan.walls.filter((w) => w.a !== w.b)
+    fixes += alias.size
+  }
+
+  // 2. Corners resting on the middle of a wall → split the wall there.
+  for (let again = true; again;) {
+    again = false
+    const nm = nodeMap(plan)
+    outer: for (const w of plan.walls) {
+      const a = nm[w.a], b = nm[w.b]
+      if (!a || !b) continue
+      for (const n of plan.nodes) {
+        if (n.id === w.a || n.id === w.b) continue
+        const pr = projectOnSegment(n, a, b)
+        const len = dist(a, b)
+        if (pr.d < JOIN_TOL && pr.t * len > JOIN_TOL && (1 - pr.t) * len > JOIN_TOL) {
+          splitWallAtNode(plan, w, n.id, nm)
+          fixes++
+          again = true
+          break outer
+        }
+      }
+    }
+  }
+
+  // 3. Walls crossing without a shared corner → add one and split both.
+  for (let again = true; again;) {
+    again = false
+    const nm = nodeMap(plan)
+    outer: for (let i = 0; i < plan.walls.length; i++) {
+      for (let j = i + 1; j < plan.walls.length; j++) {
+        const w1 = plan.walls[i], w2 = plan.walls[j]
+        if (w1.a === w2.a || w1.a === w2.b || w1.b === w2.a || w1.b === w2.b) continue
+        const A = nm[w1.a], B = nm[w1.b], P = nm[w2.a], Q = nm[w2.b]
+        if (!A || !B || !P || !Q) continue
+        const hit = segmentIntersection(A, B, P, Q)
+        const l1 = dist(A, B), l2 = dist(P, Q)
+        if (!hit || hit.t * l1 <= JOIN_TOL || (1 - hit.t) * l1 <= JOIN_TOL || hit.u * l2 <= JOIN_TOL || (1 - hit.u) * l2 <= JOIN_TOL) continue
+        const nid = splitWall(plan, w1.id, hit)
+        splitWallAtNode(plan, w2, nid, nodeMap(plan))
+        fixes++
+        again = true
+        break outer
+      }
+    }
+  }
+
+  // 4. Overlapping walls now share both corners → keep one (exterior wins),
+  //    moving any doors/windows onto the survivor.
+  const nm = nodeMap(plan)
+  const keep = new Map()
+  const drop = new Set()
+  for (const w of plan.walls) {
+    const key = w.a < w.b ? `${w.a}|${w.b}` : `${w.b}|${w.a}`
+    const k = keep.get(key)
+    if (!k) { keep.set(key, w); continue }
+    const [winner, loser] = !k.exterior && w.exterior ? [w, k] : [k, w]
+    keep.set(key, winner)
+    drop.add(loser.id)
+    const len = dist(nm[winner.a], nm[winner.b])
+    for (const o of plan.openings) {
+      if (o.wallId !== loser.id) continue
+      o.wallId = winner.id
+      if (loser.a !== winner.a) flipOpening(o, len)
+    }
+    fixes++
+  }
+  if (drop.size) plan.walls = plan.walls.filter((w) => !drop.has(w.id))
+  return fixes
+}
+
+// ── Duplicating a floor ─────────────────────────────────────────────────────
+
+export const DUPLICATE_PRESETS = {
+  outline: { label: 'Outline', hint: 'Exterior walls and windows — draw the new interior yourself' },
+  layout: { label: 'Layout', hint: 'All walls, rooms, doors and windows' },
+  everything: { label: 'Everything', hint: 'Layout plus Ethernet drops, AP sites and routers' },
+}
+
+// Re-express an opening on a wall whose direction is reversed: same physical
+// spot, swing side and hinge.
+function flipOpening(o, len) {
+  o.offset = clean(len - o.offset)
+  if (o.side != null) o.side = -o.side
+  if (o.hinge) o.hinge = o.hinge === 'b' ? 'a' : 'b'
+}
+
+// Join pairs of walls that meet in a straight line at a corner nothing else
+// uses (e.g. where a dropped interior wall used to split an exterior one).
+function mergeCollinearWalls(plan) {
+  for (let changed = true; changed;) {
+    changed = false
+    const nm = nodeMap(plan)
+    const inRoom = new Set(plan.rooms.flatMap((r) => r.nodeIds))
+    for (const n of plan.nodes) {
+      if (inRoom.has(n.id)) continue
+      const ws = plan.walls.filter((w) => w.a === n.id || w.b === n.id)
+      if (ws.length !== 2) continue
+      const [w1, w2] = ws
+      if (!!w1.exterior !== !!w2.exterior || w1.thickness !== w2.thickness || wallMaterial(w1) !== wallMaterial(w2)) continue
+      const aId = w1.a === n.id ? w1.b : w1.a
+      const bId = w2.a === n.id ? w2.b : w2.a
+      const a = nm[aId], b = nm[bId]
+      const l1 = dist(a, n), l2 = dist(n, b)
+      if (!l1 || !l2) continue
+      const cross = ((n.x - a.x) * (b.y - n.y) - (n.y - a.y) * (b.x - n.x)) / (l1 * l2)
+      const dot = (n.x - a.x) * (b.x - n.x) + (n.y - a.y) * (b.y - n.y)
+      if (Math.abs(cross) > 1e-3 || dot <= 0) continue
+
+      // Rewrite openings onto the merged wall, measured from a.
+      for (const o of plan.openings) {
+        if (o.wallId === w1.id) {
+          if (w1.a !== aId) flipOpening(o, l1)
+        } else if (o.wallId === w2.id) {
+          if (w2.a !== n.id) flipOpening(o, l2)
+          o.offset = clean(o.offset + l1)
+          o.wallId = w1.id
+        }
+      }
+      w1.a = aId
+      w1.b = bId
+      plan.walls = plan.walls.filter((w) => w !== w2)
+      plan.nodes = plan.nodes.filter((x) => x !== n)
+      changed = true
+      break
+    }
+  }
+}
+
+// Copy a floor's plan for a new floor. Every id is regenerated so the floors
+// stay independent (survey points and exports key on these ids).
+export function duplicatePlan(src, preset = 'outline') {
+  const p = clonePlan(normalizePlan(src))
+  if (preset === 'outline') {
+    p.walls = p.walls.filter((w) => w.exterior)
+    p.rooms = []
+    p.openings = p.openings.filter((o) => o.type === 'window')
+  }
+  if (preset !== 'everything') p.devices = []
+  const wallIds = new Set(p.walls.map((w) => w.id))
+  p.openings = p.openings.filter((o) => wallIds.has(o.wallId))
+  pruneOrphans(p)
+  if (preset === 'outline') mergeCollinearWalls(p)
+
+  const ids = new Map()
+  const fresh = (old) => {
+    if (!ids.has(old)) ids.set(old, uid())
+    return ids.get(old)
+  }
+  p.nodes.forEach((n) => { n.id = fresh(n.id) })
+  p.walls.forEach((w) => { w.id = fresh(w.id); w.a = fresh(w.a); w.b = fresh(w.b) })
+  p.rooms.forEach((r) => { r.id = fresh(r.id); r.nodeIds = r.nodeIds.map(fresh) })
+  p.openings.forEach((o) => { o.id = fresh(o.id); o.wallId = fresh(o.wallId) })
+  p.devices.forEach((d) => { d.id = fresh(d.id) })
+  return p
+}
+
+const LEVEL_NAMES = { '-2': 'Sub-basement', '-1': 'Basement', 0: 'Main Floor', 1: 'Second Floor', 2: 'Third Floor', 3: 'Fourth Floor' }
+export const levelName = (level) => LEVEL_NAMES[level] ?? `Level ${level}`
 
 // ── Formatting ──────────────────────────────────────────────────────────────
 
