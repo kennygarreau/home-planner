@@ -1,0 +1,16 @@
+# wifi_survey analysis service (model fitting + heatmaps) for the home planner.
+FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+WORKDIR /app
+ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PROJECT_ENVIRONMENT=/app/.venv
+
+# Dependencies first so code changes don't re-download numpy/scipy.
+COPY pyproject.toml uv.lock README.md ./
+RUN uv sync --frozen --no-dev --extra analysis --no-install-project
+COPY config ./config
+COPY src ./src
+RUN uv sync --frozen --no-dev --extra analysis
+
+RUN useradd -r -u 1001 app
+USER app
+EXPOSE 8000
+CMD ["/app/.venv/bin/wifi-survey", "serve", "--host", "0.0.0.0", "--port", "8000"]

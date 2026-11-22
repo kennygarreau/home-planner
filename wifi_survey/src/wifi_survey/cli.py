@@ -142,6 +142,38 @@ def agent(
         console.print("\nStopped.")
 
 
+@app.command()
+def serve(
+    host: Annotated[str, typer.Option(help="Bind address")] = "0.0.0.0",
+    port: Annotated[int, typer.Option(help="Port")] = 8000,
+) -> None:
+    """Run the analysis HTTP service (used by the home planner's container)."""
+    from wifi_survey.service import serve as run
+
+    run(host, port)
+
+
+@app.command()
+def analyze(
+    floorplan: Annotated[Path, typer.Option(help="floorplan.json from the home planner")],
+    points: Annotated[Path, typer.Option(help="points.jsonl from the home planner")],
+    out: Annotated[Path, typer.Option(help="Where to write the analysis JSON")] = Path("analysis.json"),
+) -> None:
+    """Fit the propagation model and build heatmaps from exported files."""
+    from wifi_survey.analysis import analyze as run
+
+    records = [json.loads(line) for line in points.read_text().splitlines() if line.strip()]
+    result = run(json.loads(floorplan.read_text()), records)
+    out.write_text(json.dumps(result))
+    for band, b in result["bands"].items():
+        console.print(
+            f"{band} GHz: {b['n_obs']} readings · RMSE {b['rmse_db']} dB · n = {b['path_loss_exponent']}"
+        )
+    for w in result["warnings"]:
+        console.print(f"[yellow]! {w}[/]")
+    console.print(f"[green]Wrote {out}[/]")
+
+
 @app.command("capture-fixtures")
 def capture_fixtures(
     name: Annotated[str, typer.Argument(help="Fixture set name, e.g. 'laptop-be200'")],
