@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { Plus, Laptop, RefreshCw, Trash2, X, Loader2, AlertTriangle, Download, CheckCircle2, Activity } from 'lucide-react'
+import { Plus, Laptop, RefreshCw, Trash2, X, Loader2, AlertTriangle, Download, CheckCircle2, Activity, Router } from 'lucide-react'
 import { api } from '../api'
 import { SIGNAL_CLASSES, signalClass, pointSignal, ACTIVE_STATUSES } from '../floorplan/survey'
 import { WALL_MATERIALS, FLOOR_STRUCTURES } from '../floorplan/geometry'
@@ -248,8 +248,97 @@ const MATERIAL_LABEL = (key) => {
   return { wood_door: 'Doors', glass: 'Windows' }[name] ?? name
 }
 
-function AnalysisCard({ analysis, busy, error, onAnalyze, show, onShow, band, onBand, donePoints }) {
-  const bands = analysis ? Object.keys(analysis.bands).sort() : []
+const GRADE_COLOR = { A: 'text-brand-400', B: 'text-brand-300', C: 'text-amber-300', D: 'text-orange-400', F: 'text-red-400' }
+
+export const AP_MODELS = {
+  tplink_eap772: 'TP-Link EAP772 (2.5 GbE, PoE+)',
+  tplink_eap773: 'TP-Link EAP773 "Pro X" (10 GbE)',
+}
+
+function PlacementCard({ plan, busy, error, onPlan, apModel, onApModel, selected, onSelect, showPlan, onShowPlan, canPlan }) {
+  const opt = plan?.options?.[selected]
+  return (
+    <div className="card space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-200"><Router size={15} /> New AP placement</h3>
+        <button className="btn-ghost !py-1 !px-2.5 text-xs disabled:opacity-40" disabled={busy || !canPlan} onClick={onPlan}
+          title={canPlan ? '' : 'Analyse the survey first'}>
+          {busy ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />} {plan ? 'Re-plan' : 'Plan'}
+        </button>
+      </div>
+      <select className="input !py-1.5 text-xs" value={apModel} onChange={(e) => onApModel(e.target.value)}>
+        {Object.entries(AP_MODELS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+      </select>
+      {error && <p className="text-xs text-red-400">{error}</p>}
+      {!plan && !error && (
+        <p className="text-xs text-slate-500">
+          Uses the calibrated model to find the best ceiling spots for 1-4 new APs, with a channel plan.
+        </p>
+      )}
+      {plan && (
+        <>
+          <div className="space-y-1">
+            {plan.options.map((o, i) => (
+              <button key={o.n_aps} onClick={() => onSelect(i)}
+                className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md border text-xs text-left ${i === selected
+                  ? 'border-brand-600/50 bg-brand-600/15 text-slate-100' : 'border-slate-700 text-slate-400 hover:bg-slate-800'}`}>
+                <span className="font-medium">{o.n_aps} AP{o.n_aps > 1 ? 's' : ''}</span>
+                {i === plan.recommended && <span className="px-1.5 rounded bg-brand-600/30 text-brand-300 text-[10px] uppercase tracking-wide">Recommended</span>}
+                <span className="ml-auto font-mono">5 GHz {(o.coverage['5'] * 100).toFixed(0)}% · 6 GHz {o.coverage['6'] != null ? `${(o.coverage['6'] * 100).toFixed(0)}%` : '—'}</span>
+              </button>
+            ))}
+          </div>
+          <label className="flex items-center gap-2 text-sm text-slate-300 cursor-pointer">
+            <input type="checkbox" className="accent-brand-500" checked={showPlan} onChange={(e) => onShowPlan(e.target.checked)} />
+            Show on floor plan (predicted heatmap + AP spots)
+          </label>
+          {opt && (
+            <>
+              <div className="border-t border-slate-800 pt-2 space-y-2">
+                {opt.aps.map((ap, k) => (
+                  <div key={k} className="text-xs">
+                    <div className="flex justify-between text-slate-200">
+                      <span>AP {k + 1} · {ap.floor}</span><span className="text-slate-400 truncate ml-2">{ap.room}</span>
+                    </div>
+                    <div className="font-mono text-slate-500">
+                      5 GHz {ap.channels['5'].block}{ap.channels['5'].dfs ? ' (DFS)' : ''} · 6 GHz ch {ap.channels['6'].channel}/160 · 2.4 ch {ap.channels['2.4'].channel}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="border-t border-slate-800 pt-2">
+                <div className="text-xs text-slate-500 mb-1">Rooms: today → predicted (5 GHz)</div>
+                {opt.rooms.map((r) => (
+                  <div key={r.room_id} className="flex justify-between text-xs py-0.5">
+                    <span className="text-slate-400 truncate">{r.name}</span>
+                    <span className="font-mono">
+                      <span className={GRADE_COLOR[r.baseline_grade] ?? 'text-slate-500'}>{r.baseline_grade ?? '–'}</span>
+                      <span className="text-slate-600"> → </span>
+                      <span className={GRADE_COLOR[r.grade]}>{r.grade}</span>
+                      <span className="text-slate-500"> {r.median_dbm['5']} dBm</span>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+          {plan.warnings?.length > 0 && (
+            <ul className="text-xs text-amber-400/90 list-disc pl-4 space-y-0.5">
+              {plan.warnings.map((w) => <li key={w}>{w}</li>)}
+            </ul>
+          )}
+          <p className="text-xs text-slate-600">
+            Planned at {plan.ap_model.planning_eirp_dbm['5']} dBm EIRP (client-matched power) with a {plan.design_margin_db} dB
+            margin for model error. Test the top spot with one AP before mounting (spec step 6).
+          </p>
+        </>
+      )}
+    </div>
+  )
+}
+
+function AnalysisCard({ analysis, busy, error, onAnalyze, show, onShow, band, onBand, donePoints, bands: bandOverride }) {
+  const bands = bandOverride ?? (analysis ? Object.keys(analysis.bands).sort() : [])
   return (
     <div className="card space-y-3">
       <div className="flex items-center justify-between gap-2">
@@ -280,6 +369,17 @@ function AnalysisCard({ analysis, busy, error, onAnalyze, show, onShow, band, on
               ))}
             </div>
           </div>
+          {analysis.rooms?.length > 0 && (
+            <div className="flex flex-wrap gap-1 pt-1">
+              {analysis.rooms.map((r) => (
+                <span key={r.room_id} title={`${r.name}: ${r.issues.join('; ') || 'meets target'}`}
+                  className="px-1.5 py-0.5 rounded bg-slate-800 text-[11px]">
+                  <span className={`font-semibold ${GRADE_COLOR[r.grade]}`}>{r.grade}</span>
+                  <span className="text-slate-400"> {r.name}</span>
+                </span>
+              ))}
+            </div>
+          )}
           {analysis.bands[band] && (() => {
             const b = analysis.bands[band]
             const good = b.rmse_db <= 6
@@ -373,7 +473,7 @@ function RoomProgress({ suggestions, points }) {
 
 export default function SurveyPanel({
   surveyId, onSurveyChange, state, suggestions, floorPoints, selectedPoint, onSelectPoint, message, onAction,
-  analysisProps,
+  analysisProps, placementProps,
 }) {
   const manifest = useAgentManifest()
   const active = state.points.find((p) => ACTIVE_STATUSES.includes(p.status))
@@ -397,6 +497,7 @@ export default function SurveyPanel({
             />
           )}
           <AnalysisCard {...analysisProps} donePoints={state.points.filter((p) => p.record).length} />
+          <PlacementCard {...placementProps} />
           <RoomProgress suggestions={suggestions} points={floorPoints} />
           <div className="card space-y-1.5">
             <div className="text-xs text-slate-500 mb-1">Signal at each point</div>

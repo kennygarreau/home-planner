@@ -58,6 +58,8 @@ export const api = {
   deleteSurveyPoint: (pid) => req('DELETE', `/surveys/points/${pid}`),
   analyzeSurvey: (id) => req('POST', `/surveys/${id}/analyze`),
   getSurveyAnalysis: (id) => req('GET', `/surveys/${id}/analysis`),
+  planSurveyAps: (id, data) => req('POST', `/surveys/${id}/plan`, data),
+  getSurveyPlan: (id) => req('GET', `/surveys/${id}/plan`),
 
   // Export
   exportJSON: () => window.open('/api/export/json', '_blank'),

@@ -158,6 +158,7 @@ model SurveyAnalysis {
   id        String   @id @default(cuid())
   surveyId  String
   survey    Survey   @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  kind      String   @default("analysis") // "analysis" (model + heatmaps) | "plan" (AP placement)
   result    Json
   createdAt DateTime @default(now())
 

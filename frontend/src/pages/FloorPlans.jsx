@@ -261,12 +261,54 @@ export default function FloorPlans() {
       setAnalysisBusy(false)
     }
   }
-  const heatGrid = analysis?.grids?.[currentId]
+  // AP placement plan (predicted coverage for new APs).
+  const [apPlan, setApPlan] = useState(null)
+  const [planBusy, setPlanBusy] = useState(false)
+  const [planError, setPlanError] = useState(null)
+  const [planOption, setPlanOption] = useState(0)
+  const [showPlan, setShowPlan] = useState(false)
+  const [apModel, setApModel] = useState(() => storage.get('floorplans.apModel') || 'tplink_eap772')
+  useEffect(() => {
+    setApPlan(null)
+    setPlanError(null)
+    setShowPlan(false)
+    if (mode !== 'survey' || !surveyId) return
+    let alive = true
+    api.getSurveyPlan(surveyId).then((p) => {
+      if (!alive) return
+      setApPlan(p)
+      setPlanOption(p.recommended ?? 0)
+    }).catch(() => {})
+    return () => { alive = false }
+  }, [surveyId, mode])
+  const runPlan = async () => {
+    setPlanBusy(true)
+    setPlanError(null)
+    try {
+      const p = await api.planSurveyAps(surveyId, { apModel, maxAps: 4 })
+      setApPlan(p)
+      setPlanOption(p.recommended ?? 0)
+      setShowPlan(true)
+      setShowHeatmap(true)
+      if (heatBand === '2.4') setHeatBand('5')
+    } catch (e) {
+      setPlanError(e.message)
+    } finally {
+      setPlanBusy(false)
+    }
+  }
+  const planShown = showPlan && apPlan?.options?.[planOption]
+  const planBands = ['5', '6']
+  const heatGrid = planShown ? planShown.grids?.[currentId] : analysis?.grids?.[currentId]
   const heatmap = useMemo(() => {
     if (mode !== 'survey' || !showHeatmap || !heatGrid) return null
     const image = heatmapImage(heatGrid, heatBand)
     return image ? { image, valueAt: (pt) => heatmapValueAt(heatGrid, heatBand, pt) } : null
   }, [mode, showHeatmap, heatGrid, heatBand])
+  const plannedAps = useMemo(() => (planShown?.aps ?? [])
+    .map((ap, k) => ({ ...ap, n: k + 1 }))
+    .filter((ap) => ap.floor_id === currentId)
+    .map((ap) => ({ ...ap, x: ap.pos[0] / 0.0254, y: ap.pos[1] / 0.0254 })), [planShown, currentId])
 
   const setMode = (m) => {
     setModeState(m)
@@ -609,6 +651,7 @@ export default function FloorPlans() {
             ghost={ghost}
             tool={mode === 'survey' ? 'survey' : tool}
             heatmap={heatmap}
+            plannedAps={mode === 'survey' ? plannedAps : []}
             survey={mode === 'survey' ? {
               suggestions, points: floorPoints, selectedId: selectedPointId, onPick: surveyPick,
             } : null}
@@ -642,6 +685,13 @@ export default function FloorPlans() {
               analysisProps={{
                 analysis, busy: analysisBusy, error: analysisError, onAnalyze: runAnalysis,
                 show: showHeatmap, onShow: setShowHeatmap, band: heatBand, onBand: setHeatBand,
+                bands: planShown ? planBands : undefined,
+              }}
+              placementProps={{
+                plan: apPlan, busy: planBusy, error: planError, onPlan: runPlan, canPlan: !!analysis,
+                apModel, onApModel: (m) => { setApModel(m); storage.set('floorplans.apModel', m) },
+                selected: planOption, onSelect: setPlanOption,
+                showPlan, onShowPlan: (v) => { setShowPlan(v); if (v && heatBand === '2.4') setHeatBand('5') },
               }}
             />
           ) : (<>

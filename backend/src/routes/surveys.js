@@ -141,8 +141,10 @@ module.exports = (prisma) => {
     }
   })
 
-  // Fit the propagation model and build heatmaps (wifi_survey analysis service).
-  router.post('/:id/analyze', async (req, res) => {
+  // Run the wifi_survey analysis service on this survey and store the result.
+  //   kind "analysis": fitted model, room grades, heatmaps   (POST /analyze)
+  //   kind "plan":     placement options for new APs          (POST /plan)
+  async function runService(req, res, kind, extra = {}) {
     try {
       const [floors, points] = await Promise.all([
         prisma.floorPlan.findMany(),
@@ -153,10 +155,10 @@ module.exports = (prisma) => {
 
       let resp
       try {
-        resp = await fetch(`${ANALYSIS_URL}/analyze`, {
+        resp = await fetch(`${ANALYSIS_URL}/${kind === 'plan' ? 'plan' : 'analyze'}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ floorplan: toWifiFloorplan(floors), records }),
+          body: JSON.stringify({ floorplan: toWifiFloorplan(floors), records, ...extra }),
           signal: AbortSignal.timeout(120000),
         })
       } catch (e) {
@@ -165,27 +167,51 @@ module.exports = (prisma) => {
       const result = await resp.json().catch(() => ({ error: `HTTP ${resp.status}` }))
       if (!resp.ok) return res.status(502).json({ error: result.error || 'Analysis failed' })
 
-      const saved = await prisma.surveyAnalysis.create({ data: { surveyId: req.params.id, result } })
+      const saved = await prisma.surveyAnalysis.create({ data: { surveyId: req.params.id, kind, result } })
       const old = await prisma.surveyAnalysis.findMany({
-        where: { surveyId: req.params.id }, orderBy: { createdAt: 'desc' }, skip: KEEP_ANALYSES, select: { id: true },
+        where: { surveyId: req.params.id, kind }, orderBy: { createdAt: 'desc' }, skip: KEEP_ANALYSES, select: { id: true },
       })
       if (old.length) await prisma.surveyAnalysis.deleteMany({ where: { id: { in: old.map((a) => a.id) } } })
       res.json({ id: saved.id, createdAt: saved.createdAt, ...result })
     } catch (e) {
       res.status(500).json({ error: e.message })
     }
-  })
+  }
 
-  router.get('/:id/analysis', async (req, res) => {
+  async function latest(req, res, kind) {
     try {
       const a = await prisma.surveyAnalysis.findFirst({
-        where: { surveyId: req.params.id }, orderBy: { createdAt: 'desc' },
+        where: { surveyId: req.params.id, kind }, orderBy: { createdAt: 'desc' },
       })
-      if (!a) return res.status(404).json({ error: 'Not analysed yet' })
+      if (!a) return res.status(404).json({ error: kind === 'plan' ? 'No AP plan yet' : 'Not analysed yet' })
       res.json({ id: a.id, createdAt: a.createdAt, ...a.result })
     } catch (e) {
       res.status(500).json({ error: e.message })
     }
+  }
+
+  router.post('/:id/analyze', (req, res) => runService(req, res, 'analysis'))
+  router.get('/:id/analysis', (req, res) => latest(req, res, 'analysis'))
+
+  const AP_MODELS = ['tplink_eap772', 'tplink_eap773']
+  router.post('/:id/plan', (req, res) => {
+    const apModel = AP_MODELS.includes(req.body?.apModel) ? req.body.apModel : 'tplink_eap772'
+    const maxAps = Math.max(1, Math.min(Number(req.body?.maxAps) || 4, 6))
+    return runService(req, res, 'plan', { ap_model: apModel, max_aps: maxAps })
+  })
+  router.get('/:id/plan', (req, res) => latest(req, res, 'plan'))
+
+  // Spec §2.3 outputs for the home planner / other tools.
+  router.get('/:id/rooms.json', async (req, res) => {
+    const a = await prisma.surveyAnalysis.findFirst({ where: { surveyId: req.params.id, kind: 'analysis' }, orderBy: { createdAt: 'desc' } })
+    if (!a) return res.status(404).json({ error: 'Not analysed yet' })
+    res.json({ schema_version: 1, survey_id: req.params.id, generated_at: a.result.generated_at, rooms: a.result.rooms || [] })
+  })
+  router.get('/:id/placement.json', async (req, res) => {
+    const a = await prisma.surveyAnalysis.findFirst({ where: { surveyId: req.params.id, kind: 'plan' }, orderBy: { createdAt: 'desc' } })
+    if (!a) return res.status(404).json({ error: 'No AP plan yet' })
+    const { options = [], ...rest } = a.result
+    res.json({ ...rest, survey_id: req.params.id, options: options.map(({ grids, ...o }) => o) })
   })
 
   // Spec §2.2: one point record per line, for the Python analysis tools.

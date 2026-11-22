@@ -92,7 +92,7 @@ function SurveyMarkers({ survey, px, onPointerDown }) {
 
 export default function FloorPlanCanvas({
   plan, ghost, tool, wallType, deviceType = 'ethernet', wifiLayer = false, selection, onSelect, showDims, fitKey, north = 0,
-  survey = null, heatmap = null,
+  survey = null, heatmap = null, plannedAps = [],
   onCommit, onBeginTransient, onTransient, onTransientEnd,
 }) {
   const wrapRef = useRef(null)
@@ -607,6 +607,25 @@ export default function FloorPlanCanvas({
             )}
           </g>
         ))}
+        {/* Planned (new) APs from the placement plan */}
+        {plannedAps.map((ap) => {
+          const r = 11 * px
+          return (
+            <g key={`planned-${ap.n}`} pointerEvents="none">
+              <circle cx={ap.x} cy={ap.y} r={r * 2.2} fill="#e879f9" fillOpacity={0.15} stroke="#e879f9" strokeWidth={1.5 * px}
+                strokeDasharray={`${4 * px} ${3 * px}`} />
+              <path d={`M ${ap.x} ${ap.y - r} L ${ap.x + r} ${ap.y} L ${ap.x} ${ap.y + r} L ${ap.x - r} ${ap.y} Z`}
+                fill="#e879f9" stroke={T.bg} strokeWidth={1.5 * px} />
+              <text x={ap.x} y={ap.y} textAnchor="middle" dominantBaseline="central" fontSize={9 * px} fontWeight={700}
+                fill={T.bg} style={{ userSelect: 'none' }}>{ap.n}</text>
+              <text x={ap.x} y={ap.y + r * 2.2 + 11 * px} textAnchor="middle" fontSize={10 * px} fontWeight={600}
+                fill="#f0abfc" stroke={T.halo} strokeWidth={3 * px} paintOrder="stroke" style={{ userSelect: 'none' }}>
+                New AP {ap.n}
+              </text>
+            </g>
+          )
+        })}
+
         {tool === 'survey' && survey && <SurveyMarkers survey={survey} px={px} onPointerDown={pickSurveyMarker} />}
 
         {tool === 'device' && cursor?.device && (
