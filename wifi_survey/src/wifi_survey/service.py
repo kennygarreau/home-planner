@@ -1,6 +1,7 @@
 """Tiny HTTP wrapper so the home planner can run analyses (`wifi-survey serve`).
 
 POST /analyze  {"floorplan": {...}, "records": [...]}  →  analysis JSON
+POST /plan     {"floorplan", "records", "ap_model"?, "max_aps"?}  →  placement options
 GET  /health   →  {"status": "ok", "version": ...}
 
 Runs inside the home planner's Docker network; nothing is exposed to the LAN.
@@ -36,7 +37,7 @@ class Handler(BaseHTTPRequestHandler):
             self._send(404, {"error": "not found"})
 
     def do_POST(self) -> None:
-        if self.path != "/analyze":
+        if self.path not in ("/analyze", "/plan"):
             self._send(404, {"error": "not found"})
             return
         length = int(self.headers.get("Content-Length") or 0)
@@ -45,9 +46,20 @@ class Handler(BaseHTTPRequestHandler):
             return
         try:
             body = json.loads(self.rfile.read(length))
-            from wifi_survey.analysis import analyze  # heavy imports only when used
+            from wifi_survey.analysis import analyze, plan_aps  # heavy imports only when used
 
-            self._send(200, analyze(body["floorplan"], body["records"]))
+            if self.path == "/plan":
+                self._send(
+                    200,
+                    plan_aps(
+                        body["floorplan"],
+                        body["records"],
+                        ap_model=body.get("ap_model") or "tplink_eap772",
+                        max_aps=int(body.get("max_aps") or 4),
+                    ),
+                )
+            else:
+                self._send(200, analyze(body["floorplan"], body["records"]))
         except (KeyError, ValueError) as e:
             self._send(400, {"error": f"invalid input: {e}"})
         except Exception as e:  # report, keep serving

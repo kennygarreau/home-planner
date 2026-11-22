@@ -52,6 +52,7 @@ select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["tests"]
 
 [tool.pyright]
 include = ["src"]

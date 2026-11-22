@@ -184,19 +184,25 @@ class Environment:
     # ── Rooms / grid ─────────────────────────────────────────────────────────
 
     def room_mask(self, floor_id: str, xy: FArr) -> npt.NDArray[np.bool_]:
-        """Points inside any room on the floor (ray casting)."""
+        """Points inside any room on the floor."""
         xy = np.asarray(xy, dtype=np.float64).reshape(-1, 2)
         inside = np.zeros(xy.shape[0], dtype=bool)
         for room in self.floors[self.index[floor_id]].rooms:
-            poly = np.asarray(room.polygon, dtype=np.float64)
-            c = np.zeros_like(inside)
-            x, y = xy[:, 0], xy[:, 1]
-            for k in range(len(poly)):
-                x1, y1 = poly[k]
-                x2, y2 = poly[k - 1]
-                cond = (y1 > y) != (y2 > y)
-                with np.errstate(divide="ignore", invalid="ignore"):
-                    xin = (x2 - x1) * (y - y1) / (y2 - y1) + x1
-                c ^= cond & (x < xin)
-            inside |= c
+            inside |= points_in_polygon(xy, room.polygon)
         return inside
+
+
+def points_in_polygon(xy: FArr, polygon: list[tuple[float, float]]) -> npt.NDArray[np.bool_]:
+    """Ray-casting point-in-polygon for many points."""
+    xy = np.asarray(xy, dtype=np.float64).reshape(-1, 2)
+    poly = np.asarray(polygon, dtype=np.float64)
+    inside = np.zeros(xy.shape[0], dtype=bool)
+    x, y = xy[:, 0], xy[:, 1]
+    for k in range(len(poly)):
+        x1, y1 = poly[k]
+        x2, y2 = poly[k - 1]
+        cond = (y1 > y) != (y2 > y)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            xin = (x2 - x1) * (y - y1) / (y2 - y1) + x1
+        inside ^= cond & (x < xin)
+    return inside

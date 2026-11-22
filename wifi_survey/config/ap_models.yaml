@@ -1,8 +1,12 @@
-# AP radio specs per band, used by the propagation model and the placement
-# optimiser. Antenna gains are from TP-Link's product pages and datasheets
-# (checked 2026-11-21). Transmit power is a CONSERVATIVE planning value, not the
-# legal maximum: the US 5 GHz ceiling is ~25 dBm and 6 GHz ~23 dBm, but
-# controllers usually run lower, and calibration absorbs the difference.
+# AP radio specs per band, used by the placement optimiser. Antenna gains are
+# from TP-Link's product pages and datasheets (checked 2026-11-21).
+#
+#   tx_power_dbm         roughly the maximum the radio can run (reference only)
+#   design_tx_power_dbm  what placement plans with: about what phones and
+#                        laptops transmit (~15-18 dBm EIRP), so clients can
+#                        answer back as well as they hear the AP. Planning at
+#                        maximum power looks great on paper and roams badly.
+# Planning EIRP = design_tx_power_dbm + antenna_gain_dbi.
 # Set `confirmed: true` on the model actually purchased.
 schema_version: 1
 
@@ -14,9 +18,9 @@ models:
     confirmed: false
     poe: "802.3at"
     bands:
-      "2.4": {tx_power_dbm: 20, antenna_gain_dbi: 4, max_width_mhz: 40}
-      "5":   {tx_power_dbm: 23, antenna_gain_dbi: 5, max_width_mhz: 160}
-      "6":   {tx_power_dbm: 23, antenna_gain_dbi: 5, max_width_mhz: 320}
+      "2.4": {tx_power_dbm: 20, design_tx_power_dbm: 12, antenna_gain_dbi: 4, max_width_mhz: 40}
+      "5":   {tx_power_dbm: 23, design_tx_power_dbm: 16, antenna_gain_dbi: 5, max_width_mhz: 160}
+      "6":   {tx_power_dbm: 23, design_tx_power_dbm: 16, antenna_gain_dbi: 5, max_width_mhz: 320}
 
   # "Omada 7 Pro X — BE11000 6-Stream Ceiling Mount Tri-Band Wi-Fi 7 AP", 10 GbE port.
   # One regional page lists ~25.9 W max draw (802.3bt for full functionality):
@@ -27,6 +31,6 @@ models:
     confirmed: false
     poe: "802.3bt (verify)"
     bands:
-      "2.4": {tx_power_dbm: 20, antenna_gain_dbi: 4, max_width_mhz: 40}
-      "5":   {tx_power_dbm: 23, antenna_gain_dbi: 5, max_width_mhz: 160}
-      "6":   {tx_power_dbm: 23, antenna_gain_dbi: 5, max_width_mhz: 320}
+      "2.4": {tx_power_dbm: 20, design_tx_power_dbm: 12, antenna_gain_dbi: 4, max_width_mhz: 40}
+      "5":   {tx_power_dbm: 23, design_tx_power_dbm: 16, antenna_gain_dbi: 5, max_width_mhz: 160}
+      "6":   {tx_power_dbm: 23, design_tx_power_dbm: 16, antenna_gain_dbi: 5, max_width_mhz: 320}

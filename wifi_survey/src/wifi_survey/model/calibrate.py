@@ -72,11 +72,33 @@ class BandModel:
     def predict(
         self, env: Environment, materials: Materials, tx: Transmitter, floor_id: str, xy: FArr, z: float
     ) -> FArr:
-        f = env.features(tx.floor_id, tx.xy, tx.z, floor_id, xy, z)
-        out = self.eirp[tx.bssid] - fspl_1m(self.band) - 10 * self.n * f.log_d
+        return self.predict_eirp(
+            env, materials, self.eirp[tx.bssid], tx.floor_id, tx.xy, tx.z, floor_id, xy, z
+        )
+
+    def predict_eirp(
+        self,
+        env: Environment,
+        materials: Materials,
+        eirp: float,
+        tx_floor: str,
+        tx_xy: tuple[float, float],
+        tx_z: float,
+        floor_id: str,
+        xy: FArr,
+        z: float,
+    ) -> FArr:
+        """Signal at `xy` from a hypothetical radio with the given EIRP."""
+        f = env.features(tx_floor, tx_xy, tx_z, floor_id, xy, z)
+        out = eirp - fspl_1m(self.band) - 10 * self.n * f.log_d
         for key, counts in _losses(f).items():
             out = out - counts * self.loss_db(materials, key)
         return out
+
+    def for_band(self, band: str) -> BandModel:
+        """Same fitted geometry (n, material factors) applied to another band's table
+        losses and free-space loss: how 6 GHz is predicted from a 5 GHz survey."""
+        return BandModel(band=band, n=self.n, k=dict(self.k), eirp={})
 
 
 def _losses(f: PathFeatures) -> dict[str, FArr]:

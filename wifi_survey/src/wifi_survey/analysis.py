@@ -7,7 +7,7 @@ Input: floorplan.json (home planner export) and the survey's point records
 from __future__ import annotations
 
 from collections import defaultdict
-from dataclasses import asdict
+from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
@@ -15,20 +15,32 @@ from wifi_survey import SCHEMA_VERSION, __version__
 from wifi_survey.floorplan.schema import FloorPlan
 from wifi_survey.model.calibrate import BandModel, Observation, Transmitter, fit_band
 from wifi_survey.model.environment import Environment, Materials
+from wifi_survey.model.grades import grade_rooms
 from wifi_survey.model.heatmap import build_grids
-from wifi_survey.model.mapping import map_bssids
+from wifi_survey.model.mapping import Mapping, map_bssids
+from wifi_survey.model.placement import load_ap_spec, plan_placement
+from wifi_survey.model.targets import Targets
 
 MIN_OBS_PER_BAND = 8
 RMSE_TARGET_DB = 6.0
 
 
-def analyze(
-    floorplan: dict[str, Any],
-    records: list[dict[str, Any]],
-    *,
-    materials: Materials | None = None,
-    step: float = 0.25,
-) -> dict[str, Any]:
+@dataclass
+class Fitted:
+    plan: FloorPlan
+    env: Environment
+    mats: Materials
+    records: list[dict[str, Any]]
+    mapping: Mapping
+    transmitters: dict[str, Transmitter]
+    models: dict[str, BandModel]
+    warnings: list[str] = field(default_factory=list[str])
+
+
+def fit_survey(
+    floorplan: dict[str, Any], records: list[dict[str, Any]], materials: Materials | None = None
+) -> Fitted:
+    """Map radios to APs and fit the propagation model per band."""
     plan = FloorPlan.model_validate(floorplan)
     env = Environment(plan)
     mats = materials or Materials.load()
@@ -49,10 +61,11 @@ def analyze(
     obs: dict[str, list[Observation]] = defaultdict(list)
     for r in records:
         z = env.rx_z(r["floor_id"], r.get("height_m") or 1.0)
-        for e in r.get("scan") or []:
-            tx = transmitters.get(e["bssid"].lower())
+        scan: list[dict[str, Any]] = r.get("scan") or []
+        for e in scan:
+            tx = transmitters.get(str(e["bssid"]).lower())
             if tx and e.get("band"):
-                obs[e["band"]].append(
+                obs[str(e["band"])].append(
                     Observation(
                         tx,
                         r["floor_id"],
@@ -74,8 +87,24 @@ def analyze(
             warnings.append(
                 f"{band} GHz: model error {m.rmse_db:.1f} dB is above the {RMSE_TARGET_DB:.0f} dB target"
             )
+    return Fitted(plan, env, mats, records, mapping, transmitters, models, warnings)
+
+
+def analyze(
+    floorplan: dict[str, Any],
+    records: list[dict[str, Any]],
+    *,
+    materials: Materials | None = None,
+    step: float = 0.25,
+) -> dict[str, Any]:
+    fit = fit_survey(floorplan, records, materials)
+    plan, env, mats, records, mapping = fit.plan, fit.env, fit.mats, fit.records, fit.mapping
+    transmitters, models, warnings = fit.transmitters, fit.models, fit.warnings
+    aps = {ap.id: (f, ap) for f in plan.floors for ap in f.existing_aps}
 
     grids = build_grids(env, mats, models, list(transmitters.values()), records, mapping.bssid_to_ap, step)
+    grade_band = "5" if "5" in models else next(iter(models), "5")
+    rooms = grade_rooms(plan, Targets.load(), grids, grade_band, records)
     ap_label = {ap_id: aps[ap_id][1].label for ap_id in aps}
     channel = {r.bssid: r.channel for m in mapping.aps for r in m.radios}
     return {
@@ -109,5 +138,39 @@ def analyze(
             for band, m in models.items()
         },
         "grids": grids,
+        "rooms": rooms,
         "warnings": warnings,
+    }
+
+
+def plan_aps(
+    floorplan: dict[str, Any],
+    records: list[dict[str, Any]],
+    *,
+    ap_model: str = "tplink_eap772",
+    max_aps: int = 4,
+) -> dict[str, Any]:
+    """Placement options for new APs using the survey-calibrated model (spec Phase 5)."""
+    fit = fit_survey(floorplan, records)
+    grids = build_grids(
+        fit.env, fit.mats, fit.models, list(fit.transmitters.values()), fit.records, fit.mapping.bssid_to_ap
+    )
+    band = "5" if "5" in fit.models else next(iter(fit.models), "5")
+    baseline = grade_rooms(fit.plan, Targets.load(), grids, band, fit.records)
+    result = plan_placement(
+        fit.plan,
+        fit.env,
+        fit.mats,
+        fit.models,
+        fit.records,
+        load_ap_spec(ap_model),
+        max_aps=max(1, min(max_aps, 6)),
+        baseline_rooms=baseline,
+    )
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "generated_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "tool_version": __version__,
+        **result,
+        "warnings": fit.warnings + result.get("warnings", []),
     }

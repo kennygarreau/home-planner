@@ -1,0 +1,19 @@
+# What "good enough" means per room, by its uses (set in the floor plan's room
+# panel). A room with several uses takes the strictest of each value. Signal
+# thresholds follow the spec: >= -60 excellent, -67 good for calls/video,
+# -75 fair. Throughput is iperf3 download to the wired server (capped near
+# 940 Mbps by its 1 GbE port).
+schema_version: 1
+
+default: {signal_dbm: -72, down_mbps: 25, latency_p95_ms: 50}
+
+uses:
+  video_calls: {signal_dbm: -67, down_mbps: 25, latency_p95_ms: 30}
+  office:      {signal_dbm: -67, down_mbps: 50, latency_p95_ms: 40}
+  streaming:   {signal_dbm: -70, down_mbps: 50, latency_p95_ms: 100}
+  gaming:      {signal_dbm: -65, down_mbps: 50, latency_p95_ms: 20}
+  smart_home:  {signal_dbm: -75, down_mbps: 5,  latency_p95_ms: 100}
+  general:     {signal_dbm: -72, down_mbps: 25, latency_p95_ms: 50}
+
+# How much each room counts in whole-house scores and AP placement.
+priority_weight: {high: 3.0, normal: 1.0, low: 0.5}
