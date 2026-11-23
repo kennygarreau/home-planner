@@ -10,7 +10,7 @@ RUN chmod -R 755 /app/dist
 
 # Wi-Fi survey agent AppImage, served at /downloads/. Source comes from the
 # `wifi_survey` additional build context (see docker-compose.yml).
-FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim AS wifi-agent
+FROM ghcr.io/astral-sh/uv:python3.12-trixie-slim AS wifi-agent
 RUN apt-get update && apt-get install -y --no-install-recommends curl file \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=wifi_survey packaging/appimage/ /pkg/
@@ -20,6 +20,8 @@ RUN /pkg/build.sh build /src /out /dl
 
 
 FROM nginx:1.30-alpine
+# Pick up Alpine security fixes published after the base image was built.
+RUN apk upgrade --no-cache
 COPY --from=builder /app/dist /usr/share/nginx/html
 COPY --from=builder /app/dist-report/report.html /usr/share/nginx/html/report/report.html
 COPY --from=wifi-agent /out/ /usr/share/nginx/html/downloads/

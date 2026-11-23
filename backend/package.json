@@ -15,10 +15,13 @@
     "cors": "^2.8.6",
     "express": "^5.2.1",
     "openai": "^4.98.0",
-    "pg": "^8.13.0"
+    "pg": "^8.13.0",
+    "prisma": "^7.8.0"
   },
   "devDependencies": {
-    "nodemon": "^3.1.14",
-    "prisma": "^7.8.0"
+    "nodemon": "^3.1.14"
+  },
+  "overrides": {
+    "effect": "3.22.5"
   }
 }

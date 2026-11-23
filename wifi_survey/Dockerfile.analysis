@@ -1,6 +1,8 @@
 # wifi_survey analysis service (model fitting + heatmaps) for the home planner.
-FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+FROM ghcr.io/astral-sh/uv:python3.12-trixie-slim
 WORKDIR /app
+# Pick up Debian security fixes published after the base image was built.
+RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/*
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PROJECT_ENVIRONMENT=/app/.venv
 
 # Dependencies first so code changes don't re-download numpy/scipy.
