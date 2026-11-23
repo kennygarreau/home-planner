@@ -21,6 +21,7 @@ RUN /pkg/build.sh build /src /out /dl
 
 FROM nginx:1.30-alpine
 COPY --from=builder /app/dist /usr/share/nginx/html
+COPY --from=builder /app/dist-report/report.html /usr/share/nginx/html/report/report.html
 COPY --from=wifi-agent /out/ /usr/share/nginx/html/downloads/
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 EXPOSE 80

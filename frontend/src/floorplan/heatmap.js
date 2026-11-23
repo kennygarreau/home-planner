@@ -6,7 +6,8 @@ export const IN_PER_M = 1 / 0.0254
 
 const hexToRgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16))
 
-export function heatmapImage(grid, band, alpha = 150) {
+// Canvas with one pixel per grid cell (row 0 = smallest y), or null.
+export function heatmapCanvas(grid, band, alpha = 150) {
   const values = grid?.bands?.[band]
   if (!values) return null
   const { nx, ny } = grid
@@ -24,6 +25,13 @@ export function heatmapImage(grid, band, alpha = 150) {
     img.data.set([rgb[0], rgb[1], rgb[2], alpha], i * 4)
   }
   ctx.putImageData(img, 0, 0)
+  return canvas
+}
+
+export function heatmapImage(grid, band, alpha = 150) {
+  const canvas = heatmapCanvas(grid, band, alpha)
+  if (!canvas) return null
+  const { nx, ny } = grid
   return {
     href: canvas.toDataURL('image/png'),
     x: grid.x0 * IN_PER_M,

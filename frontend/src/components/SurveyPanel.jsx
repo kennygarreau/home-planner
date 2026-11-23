@@ -4,6 +4,7 @@ import { Plus, Laptop, RefreshCw, Trash2, X, Loader2, AlertTriangle, Download, C
 import { api } from '../api'
 import { SIGNAL_CLASSES, signalClass, pointSignal, ACTIVE_STATUSES } from '../floorplan/survey'
 import { WALL_MATERIALS, FLOOR_STRUCTURES } from '../floorplan/geometry'
+import { exportReport } from '../floorplan/exportReport'
 
 export const SURVEY_TYPES = {
   baseline: 'Baseline (current network)',
@@ -307,18 +308,24 @@ function PlacementCard({ plan, busy, error, onPlan, apModel, onApModel, selected
                 ))}
               </div>
               <div className="border-t border-slate-800 pt-2">
-                <div className="text-xs text-slate-500 mb-1">Rooms: today → predicted (5 GHz)</div>
-                {opt.rooms.map((r) => (
-                  <div key={r.room_id} className="flex justify-between text-xs py-0.5">
-                    <span className="text-slate-400 truncate">{r.name}</span>
-                    <span className="font-mono">
-                      <span className={GRADE_COLOR[r.baseline_grade] ?? 'text-slate-500'}>{r.baseline_grade ?? '–'}</span>
-                      <span className="text-slate-600"> → </span>
-                      <span className={GRADE_COLOR[r.grade]}>{r.grade}</span>
-                      <span className="text-slate-500"> {r.median_dbm['5']} dBm</span>
-                    </span>
-                  </div>
-                ))}
+                <div className="grid grid-cols-[minmax(0,1fr)_2.75rem_1rem_3.75rem_3.5rem] items-center gap-x-1 text-xs">
+                  <span className="text-slate-500 pb-1">Room</span>
+                  <span className="text-slate-500 pb-1 text-center">Today</span>
+                  <span />
+                  <span className="text-slate-500 pb-1 text-center">Predicted</span>
+                  <span className="text-slate-500 pb-1 text-right">5 GHz</span>
+                  {opt.rooms.map((r) => (
+                    <div key={r.room_id} className="contents">
+                      <span className="text-slate-300 truncate py-0.5" title={`${r.floor} · ${r.name}`}>{r.name}</span>
+                      <span className={`text-center font-semibold ${GRADE_COLOR[r.baseline_grade] ?? 'text-slate-600'}`}>
+                        {r.baseline_grade ?? '–'}
+                      </span>
+                      <span className="text-center text-slate-600">→</span>
+                      <span className={`text-center font-semibold ${GRADE_COLOR[r.grade]}`}>{r.grade}</span>
+                      <span className="text-right font-mono tabular-nums text-slate-400">{Math.round(r.median_dbm['5'])} dBm</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             </>
           )}
@@ -434,6 +441,36 @@ function AnalysisCard({ analysis, busy, error, onAnalyze, show, onShow, band, on
   )
 }
 
+function ExportReportButton({ surveyId, hasAnalysis, hasPlan }) {
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState(null)
+  const run = async () => {
+    setBusy(true)
+    setMsg(null)
+    try {
+      const r = await exportReport(surveyId)
+      setMsg(`Downloaded (${(r.bytes / 1024 / 1024).toFixed(1)} MB)`)
+    } catch (e) {
+      setMsg(e.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <div className="card space-y-2">
+      <button className="btn-primary w-full justify-center disabled:opacity-50" disabled={busy} onClick={run}>
+        {busy ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />} Export report
+      </button>
+      <p className="text-xs text-slate-500">
+        One HTML file that works offline: 3D house, before/after heatmaps, every AP option, room grades and an Omada setup checklist.
+        {!hasAnalysis && ' Run the coverage model first for heatmaps.'}
+        {hasAnalysis && !hasPlan && ' Run AP placement first to include the options.'}
+      </p>
+      {msg && <p className="text-xs text-slate-400">{msg}</p>}
+    </div>
+  )
+}
+
 function RoomProgress({ suggestions, points }) {
   const done = new Set(points.filter((p) => p.record).map((p) => p.label))
   const groups = []
@@ -498,6 +535,7 @@ export default function SurveyPanel({
           )}
           <AnalysisCard {...analysisProps} donePoints={state.points.filter((p) => p.record).length} />
           <PlacementCard {...placementProps} />
+          <ExportReportButton surveyId={surveyId} hasAnalysis={!!analysisProps.analysis} hasPlan={!!placementProps.plan} />
           <RoomProgress suggestions={suggestions} points={floorPoints} />
           <div className="card space-y-1.5">
             <div className="text-xs text-slate-500 mb-1">Signal at each point</div>

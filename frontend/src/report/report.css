@@ -1,0 +1,21 @@
+@import "tailwindcss";
+
+/* Standalone report: light page, system fonts (works offline). The 2D floor
+   viewers reuse the app's dark canvas, so keep its colour tokens too. */
+@theme {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --color-brand-300: #8ecf8e;
+  --color-brand-400: #5cb35c;
+  --color-brand-500: #3a9a3a;
+  --color-brand-600: #2a7a2a;
+  --color-slate-950: #0a0f1a;
+}
+
+html { scroll-behavior: smooth; }
+body { margin: 0; }
+
+@media print {
+  .sticky { position: static !important; }
+  canvas { max-width: 100%; }
+}

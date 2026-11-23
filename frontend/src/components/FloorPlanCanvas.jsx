@@ -92,7 +92,7 @@ function SurveyMarkers({ survey, px, onPointerDown }) {
 
 export default function FloorPlanCanvas({
   plan, ghost, tool, wallType, deviceType = 'ethernet', wifiLayer = false, selection, onSelect, showDims, fitKey, north = 0,
-  survey = null, heatmap = null, plannedAps = [],
+  survey = null, heatmap = null, plannedAps = [], hintText,
   onCommit, onBeginTransient, onTransient, onTransientEnd,
 }) {
   const wrapRef = useRef(null)
@@ -424,7 +424,8 @@ export default function FloorPlanCanvas({
   const selOpeningStart = selOpening ? nm[wallsById[selOpening.wallId]?.a] : null
 
   const probe = cursor?.probe
-  const hint = message
+  const hint = (hintText !== undefined && message == null ? (probe != null ? `Signal here: ${Math.round(probe)} dBm` : hintText) : null)
+    ?? message
     ?? (tool === 'survey' && probe != null ? `Predicted signal here: ${Math.round(probe)} dBm · ${HINTS.survey}` : null)
     ?? (tool === 'wall' ? (drawStart ? HINTS.wallActive : HINTS.wallIdle) : HINTS[tool])
 
@@ -693,10 +694,10 @@ export default function FloorPlanCanvas({
       </div>
 
       {/* Contextual hint */}
-      <div className={`absolute bottom-3 left-3 right-3 sm:right-auto px-3 py-1.5 rounded-lg text-xs border pointer-events-none
+      {hint ? <div className={`absolute bottom-3 left-3 right-3 sm:right-auto px-3 py-1.5 rounded-lg text-xs border pointer-events-none
         ${message ? 'bg-amber-950/90 border-amber-800/60 text-amber-200' : 'bg-slate-900/90 border-slate-700 text-slate-400'}`}>
         {hint}
-      </div>
+      </div> : null}
     </div>
   )
 }
