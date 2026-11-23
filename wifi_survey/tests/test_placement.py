@@ -108,9 +108,16 @@ def test_two_aps_split_the_room():
     assert two["coverage"]["5"] > one["coverage"]["5"]
 
 
-def test_stops_offering_options_once_saturated():
-    res = placement(long_room(), ap=ApSpec("t", "Test", {"5": 30.0}), max_aps=4)
-    assert len(res["options"]) == 1 and res["options"][0]["coverage"]["5"] == 1.0
+def test_all_options_offered_and_more_aps_buy_excellent_signal():
+    res = placement(long_room(), ap=ApSpec("t", "Test", {"5": 14.0}), max_aps=4)
+    opts = res["options"]
+    assert [o["n_aps"] for o in opts] == [1, 2, 3, 4]
+    assert res["recommended"] == 0  # one AP already meets the targets
+    exc = [o["excellent"]["5"] for o in opts]
+    assert exc[1] > exc[0] and exc[3] >= exc[2] >= exc[1]  # extra APs still buy something
+    assert opts[1]["overlap_5"] > 0 and opts[0]["overlap_5"] == 0
+    room = opts[1]["rooms"][0]
+    assert room["link_rate_mbps"]["5"] > 0 and room["throughput_mbps"]["5"] <= 940
 
 
 def test_design_margin_comes_from_model_error():

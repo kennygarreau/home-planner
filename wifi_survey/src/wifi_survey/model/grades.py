@@ -40,18 +40,21 @@ def grid_cells(grid: dict[str, Any], band: str) -> tuple[FArr, FArr] | None:
     return xy, v
 
 
+EXCELLENT_DBM = -60.0
+
+
 def room_coverage(
     cells: tuple[FArr, FArr] | None, room: Room, threshold: float
-) -> tuple[float | None, float | None]:
-    """(share of room cells >= threshold, median signal) from a grid."""
+) -> tuple[float | None, float | None, float | None]:
+    """(share >= threshold, median signal, share >= -60 dBm) of a room's grid cells."""
     if cells is None:
-        return None, None
+        return None, None, None
     xy, v = cells
     inside = points_in_polygon(xy, room.polygon) & np.isfinite(v)
     if not inside.any():
-        return None, None
+        return None, None, None
     vals = v[inside]
-    return float(np.mean(vals >= threshold)), float(np.median(vals))
+    return float(np.mean(vals >= threshold)), float(np.median(vals)), float(np.mean(vals >= EXCELLENT_DBM))
 
 
 def _score(parts: dict[str, float | None]) -> float:
@@ -138,8 +141,10 @@ def grade_rooms(
         cells = grid_cells(grids[f.id], band) if f.id in grids else None
         for room in f.rooms:
             t = targets.for_room(room)
-            cov, med = room_coverage(cells, room, t.signal_dbm)
+            cov, med, exc = room_coverage(cells, room, t.signal_dbm)
             recs = [r for r in records if r.get("room_id") == room.id]
+            graded = grade_room(room, t, cov, med, recs)
+            graded["model"]["excellent"] = None if exc is None else round(exc, 3)
             out.append(
                 {
                     "room_id": room.id,
@@ -149,7 +154,7 @@ def grade_rooms(
                     "priority": room.priority,
                     "use": room.use,
                     "band": band,
-                    **grade_room(room, t, cov, med, recs),
+                    **graded,
                 }
             )
     return out

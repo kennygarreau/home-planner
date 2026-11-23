@@ -30,12 +30,18 @@ from wifi_survey.model.calibrate import BandModel
 from wifi_survey.model.environment import Environment, FArr, Materials, points_in_polygon
 from wifi_survey.model.grades import letter
 from wifi_survey.model.mapping import device_key
+from wifi_survey.model.rates import link_rate_mbps, throughput_mbps
 from wifi_survey.model.targets import Targets
 
 BAND_WEIGHTS = {"5": 0.6, "6": 0.4}
 MARGIN_MIN_DB, MARGIN_MAX_DB = 3.0, 8.0  # design margin = model RMSE, within these bounds
 NEIGHBOUR_MIN_SIGHTINGS = 3  # a neighbour network must be seen at this many spots to count
-SATURATED = 0.995  # stop offering more APs once every band is this well covered
+# Beyond the targets, more APs buy strong signal: score the share of area at
+# "excellent" (>= -60 dBm, room for the fastest rates) at a lower weight so it
+# never trades away actual target coverage (10% more excellent = 1% coverage).
+EXCELLENT_DBM = -60.0
+EXCELLENT_WEIGHT = 0.1
+OVERLAP_DBM = -67.0  # two APs at least this strong = roaming overlap
 CANDIDATE_SPACING_M = 1.0
 CANDIDATE_INSET_M = 0.5
 EVAL_STEP_M = 0.5
@@ -233,6 +239,7 @@ class Scorer:
     cells: Cells
     penalty: FArr  # (C,)
     margin_db: float = 0.0  # placement aims for room target + this
+    extra: dict[str, FArr] = field(default_factory=dict[str, FArr])  # reported, not optimised (2.4 GHz)
 
     @property
     def thr(self) -> FArr:
@@ -249,8 +256,28 @@ class Scorer:
         """Coverage share plus the margin tie-breaker, for (..., E) best-signal arrays."""
         w, thr = self.cells.weight, self.thr
         covered = (best >= thr) @ w / w.sum()
+        excellent = (best >= EXCELLENT_DBM) @ w / w.sum()
         margin = np.clip(best - thr, -MARGIN_CLIP_DB, MARGIN_CLIP_DB) / MARGIN_CLIP_DB
-        return covered + MARGIN_WEIGHT * (margin @ w) / w.sum()
+        return covered + EXCELLENT_WEIGHT * excellent + MARGIN_WEIGHT * (margin @ w) / w.sum()
+
+    def share(self, chosen: list[int], band: str, dbm: float | None = None) -> float:
+        """Weighted share of area at or above `dbm` (default: each room's own target, no margin)."""
+        m = self.matrices.get(band, self.extra.get(band))
+        if m is None or not chosen:
+            return 0.0
+        best = m[chosen].max(0)
+        thr = self.cells.threshold if dbm is None else np.full_like(best, dbm)
+        w = self.cells.weight
+        return float((w * (best >= thr)).sum() / w.sum())
+
+    def overlap(self, chosen: list[int], band: str) -> float:
+        """Share of area where at least two APs are >= OVERLAP_DBM (smooth roaming zones)."""
+        m = self.matrices.get(band)
+        if m is None or len(chosen) < 2:
+            return 0.0
+        strong = (m[chosen] >= OVERLAP_DBM).sum(0) >= 2
+        w = self.cells.weight
+        return float((w * strong).sum() / w.sum())
 
     def score(self, chosen: list[int]) -> float:
         if not chosen:
@@ -401,7 +428,10 @@ def plan_placement(
     margin = (
         float(np.clip(round(base.rmse_db), MARGIN_MIN_DB, MARGIN_MAX_DB)) if base.rmse_db else MARGIN_MIN_DB
     )
-    scorer = Scorer(matrices, cells, penalty, margin)
+    extra: dict[str, FArr] = {}
+    if "2.4" in models and "2.4" in ap.eirp:
+        extra["2.4"] = signal_matrix(env, mats, models["2.4"], ap.eirp["2.4"], cands, cells)
+    scorer = Scorer(matrices, cells, penalty, margin, extra)
     busy = busy_channels(records)
 
     options: list[dict[str, Any]] = []
@@ -409,8 +439,6 @@ def plan_placement(
     for n in range(1, max_aps + 1):
         chosen = scorer.optimise(n, start=chosen)
         options.append(_option(n, chosen, scorer, cands, cells, plan, busy, baseline_rooms or []))
-        if all(scorer.coverage(chosen, b) >= SATURATED for b in matrices):
-            break  # more APs can't improve coverage; further options would be arbitrary
 
     # "Good enough" uses the same band weighting as the objective (5 and 6 GHz).
     norm = sum(BAND_WEIGHTS[b] for b in matrices)
@@ -481,7 +509,7 @@ def _option(
         for k, i in enumerate(order)
     ]
 
-    best = {b: m[chosen].max(0) for b, m in scorer.matrices.items()}
+    best = {b: m[chosen].max(0) for b, m in {**scorer.matrices, **scorer.extra}.items()}
     base_by_room = {r["room_id"]: r for r in baseline}
     rooms: list[dict[str, Any]] = []
     for f in plan.floors:
@@ -491,6 +519,7 @@ def _option(
                 continue
             thr = float(cells.threshold[sel][0])
             cov = {b: float(np.mean(v[sel] >= thr)) for b, v in best.items()}
+            med = {b: float(np.median(v[sel])) for b, v in best.items()}
             b0 = base_by_room.get(room.id, {})
             rooms.append(
                 {
@@ -500,7 +529,12 @@ def _option(
                     "priority": room.priority,
                     "target_dbm": thr,
                     "coverage": {b: round(c, 3) for b, c in cov.items()},
-                    "median_dbm": {b: round(float(np.median(v[sel])), 1) for b, v in best.items()},
+                    "median_dbm": {b: round(m, 1) for b, m in med.items()},
+                    "excellent": {
+                        b: round(float(np.mean(v[sel] >= EXCELLENT_DBM)), 3) for b, v in best.items()
+                    },
+                    "link_rate_mbps": {b: link_rate_mbps(m, b) for b, m in med.items()},
+                    "throughput_mbps": {b: throughput_mbps(m, b) for b, m in med.items()},
                     "grade": letter(cov.get("5", 0.0)),
                     "baseline_grade": b0.get("grade"),
                     "baseline_coverage": _baseline_coverage(b0),
@@ -525,6 +559,13 @@ def _option(
         "n_aps": n,
         "score": round(scorer.score(chosen), 4),
         "coverage": {b: round(scorer.coverage(chosen, b), 4) for b in scorer.matrices},
+        "coverage_at_target": {
+            b: round(scorer.share(chosen, b), 4) for b in [*scorer.matrices, *scorer.extra]
+        },
+        "excellent": {
+            b: round(scorer.share(chosen, b, EXCELLENT_DBM), 4) for b in [*scorer.matrices, *scorer.extra]
+        },
+        "overlap_5": round(scorer.overlap(chosen, "5"), 4),
         "aps": aps,
         "rooms": rooms,
         "grids": grids,
